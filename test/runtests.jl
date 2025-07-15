@@ -1,4 +1,5 @@
 using LockstepODE
+import KernelAbstractions as KA
 using Test
 using OrdinaryDiffEq: ODEProblem, Tsit5, solve
 
@@ -26,7 +27,7 @@ using OrdinaryDiffEq: ODEProblem, Tsit5, solve
         @test lockstep_func2.ordering isa PerIndex
         
         # Test direct constructor
-        lockstep_func3 = LockstepFunction(harmonic_oscillator!, 2, 2, true, PerODE())
+        lockstep_func3 = LockstepFunction(harmonic_oscillator!, 2, 2, true, PerODE(), KA.CPU())
         @test lockstep_func3.num_odes == 2
         @test lockstep_func3.ode_size == 2
     end
@@ -91,6 +92,21 @@ using OrdinaryDiffEq: ODEProblem, Tsit5, solve
         @test individual_sols[1].u[1] ≈ [1.0, 0.0]
         @test individual_sols[2].u[1] ≈ [2.0, 0.0]
         
+    end
+    
+    @testset "Backend Detection and GPU Support" begin
+        u0 = [1.0, 0.0, 2.0, 0.0]
+        
+        # Test CPU backend detection
+        lockstep_func_cpu = LockstepFunction(harmonic_oscillator!, u0, 2)
+        @test lockstep_func_cpu.backend isa KA.CPU
+        
+        # Test explicit backend setting
+        lockstep_func_explicit = LockstepFunction(harmonic_oscillator!, u0, 2; backend=KA.CPU())
+        @test lockstep_func_explicit.backend isa KA.CPU
+        
+        # Test backend detection utility
+        @test KA.get_backend(u0) isa KA.CPU
     end
     
 end

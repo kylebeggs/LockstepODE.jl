@@ -4,11 +4,18 @@ authors = ["Kyle Beggs <beggskw@gmail.com> and contributors"]
 version = "0.0.1"
 
 [deps]
+KernelAbstractions = "63c18a36-062a-441e-b654-da1e3ab1ce7c"
 OrdinaryDiffEq = "1dea7af3-3e70-54e6-95c3-0bf5283fa5ed"
 OhMyThreads = "67456a42-1dca-4109-a031-0a68de7e3ad5"
 
+[extensions]
+LockstepODECUDAExt = "CUDA"
+
 [compat]
 julia = "1.10"
+
+[weakdeps]
+CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
