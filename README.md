@@ -1,6 +1,6 @@
 # LockstepODE.jl
 
-[![Build Status](https://github.com/Kyle Beggs/LockstepODE.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/Kyle Beggs/LockstepODE.jl/actions/workflows/CI.yml?query=branch%3Amain)
+[![Build Status](https://github.com/beggskw/LockstepODE.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/beggskw/LockstepODE.jl/actions/workflows/CI.yml?query=branch%3Amain)
 
 LockstepODE.jl is a Julia package for efficiently solving multiple coupled ordinary differential equations (ODEs) in lockstep. It provides a high-level interface for batching multiple ODE systems and solving them simultaneously, with support for both threading and different memory layouts.
 
@@ -11,7 +11,7 @@ LockstepODE.jl is a Julia package for efficiently solving multiple coupled ordin
 - **Flexible memory layouts**: Support for both per-ODE (`PerODE`) and per-index (`PerIndex`) data organization
 - **Standard workflow**: Uses standard `OrdinaryDiffEq.jl` workflow with `ODEProblem` and `solve`
 - **Easy integration**: Works seamlessly with `OrdinaryDiffEq.jl` and the SciML ecosystem
-- **Utility functions**: Built-in functions for batching initial conditions, parameters, and extracting solutions
+- **Utility functions**: Built-in functions for batching initial conditions and extracting solutions
 
 ## Installation
 
@@ -42,7 +42,7 @@ end
 num_odes = 3
 u0_single = [1.0, 0.0]  # Single initial condition
 u0_batched = repeat(u0_single, num_odes)  # Batch for all oscillators
-lockstep_func = LockstepFunction(harmonic_oscillator!, u0_batched, num_odes)
+lockstep_func = LockstepFunction(harmonic_oscillator!, length(u0_single), num_odes)
 
 # Use standard OrdinaryDiffEq.jl workflow
 prob = ODEProblem(lockstep_func, u0_batched, (0.0, 2π))
@@ -73,7 +73,7 @@ u0_batched = vcat(u0_vec...)  # Flatten to single vector
 p_batched = [1.0, 1.2, 0.8, 1.1]  # Different parameters for each ODE
 
 # Create the lockstep function
-lockstep_func = LockstepFunction(my_ode!, u0_batched, num_odes)
+lockstep_func = LockstepFunction(my_ode!, 2, num_odes)  # 2 variables per ODE
 
 # Use standard OrdinaryDiffEq.jl workflow
 prob = ODEProblem(lockstep_func, u0_batched, (0.0, 10.0), p_batched)
@@ -92,7 +92,7 @@ end
 # Per-index layout (can be more cache-friendly for some operations)
 lockstep_func_per_index = LockstepFunction(
     my_ode!, 
-    u0_batched,
+    2,  # 2 variables per ODE
     num_odes;
     ordering=PerIndex()
 )
@@ -105,7 +105,7 @@ prob_per_index = ODEProblem(lockstep_func_per_index, u0_batched, (0.0, 10.0), p_
 # Disable internal threading (useful if you want to control threading externally)
 lockstep_func_no_threading = LockstepFunction(
     my_ode!, 
-    u0_batched,
+    2,  # 2 variables per ODE
     num_odes;
     internal_threading=false
 )
@@ -116,45 +116,40 @@ prob_no_threading = ODEProblem(lockstep_func_no_threading, u0_batched, (0.0, 10.
 
 ```julia
 # Create a lockstep function first
-lockstep_func = LockstepFunction(my_ode!, zeros(8), 4)  # 4 ODEs, 2 variables each
+lockstep_func = LockstepFunction(my_ode!, 2, 4)  # 4 ODEs, 2 variables each
 
 # Batch initial conditions from individual vectors
 u0_vec = [[1.0, 0.0], [2.0, 1.0], [0.5, -0.5], [1.5, 0.8]]
-u0_batched = batch_initial_conditions(lockstep_func, u0_vec)
+u0_batched = batch_initial_conditions(u0_vec, 4, 2)
 
 # Or repeat a single initial condition
 u0_single = [1.0, 0.0]
-u0_repeated = batch_initial_conditions(lockstep_func, u0_single)
-
-# Batch parameters
-p_vec = [1.0, 1.2, 0.8, 1.1]
-p_batched = batch_parameters(lockstep_func, p_vec)
+u0_repeated = batch_initial_conditions(u0_single, 4, 2)
 ```
 
 ## API Reference
 
 ### Main Types
 
-- `LockstepFunction{O,F}`: Callable struct that handles the lockstep execution of multiple ODEs
+- `LockstepFunction{O,F,B}`: Callable struct that handles the lockstep execution of multiple ODEs
 - `PerODE`: Memory layout where each ODE's variables are stored contiguously
 - `PerIndex`: Memory layout where variables of the same index across ODEs are stored contiguously
 
 ### Constructor
 
 ```julia
-LockstepFunction(f, u0, num_odes; internal_threading=true, ordering=PerODE())
+LockstepFunction(f, ode_size, num_odes; internal_threading=true, ordering=PerODE())
 ```
 
 - `f`: ODE function with signature `f(du, u, p, t)`
-- `u0`: Batched initial condition vector for all ODEs
+- `ode_size`: Number of variables per ODE system
 - `num_odes`: Number of ODE systems to solve
 - `internal_threading`: Whether to use threading for parallel execution (default: `true`)
 - `ordering`: Memory layout (`PerODE()` or `PerIndex()`, default: `PerODE()`)
 
 ### Main Functions
 
-- `batch_initial_conditions(lockstep_func, u0)`: Batch initial conditions for all ODEs
-- `batch_parameters(lockstep_func, p)`: Batch parameters for all ODEs  
+- `batch_initial_conditions(u0, num_odes, ode_size)`: Batch initial conditions for all ODEs
 - `extract_solutions(lockstep_func, sol)`: Extract individual ODE solutions from batched solution
 
 ### Standard Workflow
@@ -162,7 +157,8 @@ LockstepFunction(f, u0, num_odes; internal_threading=true, ordering=PerODE())
 1. Create a `LockstepFunction`
 2. Use it with standard `OrdinaryDiffEq.jl` functions:
    ```julia
-   lockstep_func = LockstepFunction(my_ode!, u0_batched, num_odes)
+   lockstep_func = LockstepFunction(my_ode!, ode_size, num_odes)
+   u0_batched = batch_initial_conditions(u0, num_odes, ode_size)
    prob = ODEProblem(lockstep_func, u0_batched, tspan, p)
    sol = solve(prob, alg)
    individual_sols = extract_solutions(lockstep_func, sol)

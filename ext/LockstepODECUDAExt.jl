@@ -3,7 +3,6 @@ module LockstepODECUDAExt
 using LockstepODE
 import KernelAbstractions as KA
 using CUDA
-using Statistics
 
 LockstepODE._ordering(::CUDABackend) = LockstepODE.PerIndex()
 
