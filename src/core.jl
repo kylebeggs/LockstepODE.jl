@@ -1,7 +1,6 @@
 using OrdinaryDiffEq
 using OhMyThreads
 import KernelAbstractions as KA
-import OrdinaryDiffEq: solve
 
 # Core types and structures
 struct PerODE end
@@ -18,16 +17,19 @@ end
 
 function LockstepFunction(
         f,
-        u0::AbstractVector,
+        ode_size::Int,
         num_odes::Int;
         internal_threading = true,
-        ordering = PerODE(),
-        backend = KA.get_backend(u0)
+        ordering = nothing,
+        backend = KA.CPU()
 )
-    ode_size = length(u0) ÷ num_odes
+    _ordering_actual = ordering === nothing ? _ordering(backend) : ordering
+
     return LockstepFunction(
-        f, num_odes, ode_size, internal_threading, ordering, backend)
+        f, num_odes, ode_size, internal_threading, _ordering_actual, backend)
 end
+
+_ordering(::KA.CPU) = PerODE()
 
 function ode_kernel!(i, lockstep_func::LockstepFunction, du, u, p, t)
     idxs = _get_idxs(lockstep_func, i)

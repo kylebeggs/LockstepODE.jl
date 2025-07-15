@@ -11,10 +11,8 @@ using OrdinaryDiffEq: ODEProblem, Tsit5, solve
     end
     
     @testset "LockstepFunction constructor" begin
-        u0 = [1.0, 0.0, 2.0, 0.0]  # 2 oscillators
-        
         # Test convenient constructor
-        lockstep_func = LockstepFunction(harmonic_oscillator!, u0, 2)
+        lockstep_func = LockstepFunction(harmonic_oscillator!, 2, 2)
         @test lockstep_func.num_odes == 2
         @test lockstep_func.ode_size == 2
         @test lockstep_func.internal_threading == true
@@ -22,7 +20,7 @@ using OrdinaryDiffEq: ODEProblem, Tsit5, solve
         @test lockstep_func.f === harmonic_oscillator!
         
         # Test with options
-        lockstep_func2 = LockstepFunction(harmonic_oscillator!, u0, 2; internal_threading=false, ordering=PerIndex())
+        lockstep_func2 = LockstepFunction(harmonic_oscillator!, 2, 2; internal_threading=false, ordering=PerIndex())
         @test lockstep_func2.internal_threading == false
         @test lockstep_func2.ordering isa PerIndex
         
@@ -33,37 +31,23 @@ using OrdinaryDiffEq: ODEProblem, Tsit5, solve
     end
     
     @testset "batch_initial_conditions" begin
-        u0_single = [1.0, 0.0]
-        u0_batched_single = [1.0, 0.0, 1.0, 0.0, 1.0, 0.0]
-        lockstep_func = LockstepFunction(harmonic_oscillator!, u0_batched_single, 3)
-        
         # Test single initial condition
-        u0_batched = batch_initial_conditions(lockstep_func, u0_single)
+        u0_single = [1.0, 0.0]
+        u0_batched = batch_initial_conditions(u0_single, 3, 2)
         @test u0_batched == [1.0, 0.0, 1.0, 0.0, 1.0, 0.0]
         
         # Test vector of initial conditions
         u0_vec = [[1.0, 0.0], [2.0, 1.0], [0.0, -1.0]]
-        u0_batched_vec = batch_initial_conditions(lockstep_func, u0_vec)
+        u0_batched_vec = batch_initial_conditions(u0_vec, 3, 2)
         @test u0_batched_vec == [1.0, 0.0, 2.0, 1.0, 0.0, -1.0]
     end
     
-    @testset "batch_parameters" begin
-        lockstep_func = LockstepFunction(harmonic_oscillator!, [1.0, 0.0, 1.0, 0.0], 2)
-        
-        # Test single parameter
-        p_single = nothing
-        @test batch_parameters(lockstep_func, p_single) === nothing
-        
-        # Test vector of parameters
-        p_vec = [1.0, 2.0]
-        @test batch_parameters(lockstep_func, p_vec) == [1.0, 2.0]
-    end
     
     @testset "LockstepFunction callable" begin
-        u0 = [1.0, 0.0, 2.0, 0.0]
-        lockstep_func = LockstepFunction(harmonic_oscillator!, u0, 2)
+        lockstep_func = LockstepFunction(harmonic_oscillator!, 2, 2)
         
-        # Test callable
+        # Test callable with manually batched u0
+        u0 = [1.0, 0.0, 2.0, 0.0]
         du = zeros(4)
         lockstep_func(du, u0, nothing, 0.0)
         @test du[1] ≈ 0.0  # du[1] = u[2] = 0.0
@@ -75,9 +59,9 @@ using OrdinaryDiffEq: ODEProblem, Tsit5, solve
     @testset "Standard OrdinaryDiffEq.jl workflow" begin
         u0 = [1.0, 0.0, 2.0, 0.0]
         tspan = (0.0, 1.0)
-        lockstep_func = LockstepFunction(harmonic_oscillator!, u0, 2)
+        lockstep_func = LockstepFunction(harmonic_oscillator!, 2, 2)
         
-        # Test standard workflow
+        # Test standard workflow - manually batch u0
         prob = ODEProblem(lockstep_func, u0, tspan)
         sol = solve(prob, Tsit5())
         @test sol.t[1] ≈ 0.0
@@ -98,15 +82,17 @@ using OrdinaryDiffEq: ODEProblem, Tsit5, solve
         u0 = [1.0, 0.0, 2.0, 0.0]
         
         # Test CPU backend detection
-        lockstep_func_cpu = LockstepFunction(harmonic_oscillator!, u0, 2)
+        lockstep_func_cpu = LockstepFunction(harmonic_oscillator!, 2, 2)
         @test lockstep_func_cpu.backend isa KA.CPU
         
         # Test explicit backend setting
-        lockstep_func_explicit = LockstepFunction(harmonic_oscillator!, u0, 2; backend=KA.CPU())
+        lockstep_func_explicit = LockstepFunction(harmonic_oscillator!, 2, 2; backend=KA.CPU())
         @test lockstep_func_explicit.backend isa KA.CPU
         
         # Test backend detection utility
         @test KA.get_backend(u0) isa KA.CPU
     end
+    
+    
     
 end
