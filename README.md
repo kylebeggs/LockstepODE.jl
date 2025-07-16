@@ -1,6 +1,8 @@
 # LockstepODE.jl
 
-[![Build Status](https://github.com/beggskw/LockstepODE.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/beggskw/LockstepODE.jl/actions/workflows/CI.yml?query=branch%3Amain)
+[![Build Status](https://github.com/kylebeggs/LockstepODE.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/kylebeggs/LockstepODE.jl/actions/workflows/CI.yml?query=branch%3Amain)
+[![Documentation](https://img.shields.io/badge/docs-stable-blue.svg)](https://kylebeggs.github.io/LockstepODE.jl/stable)
+[![Documentation](https://img.shields.io/badge/docs-dev-blue.svg)](https://kylebeggs.github.io/LockstepODE.jl/dev)
 
 LockstepODE.jl is a Julia package for efficiently solving multiple coupled ordinary differential equations (ODEs) in lockstep. It provides a high-level interface for batching multiple ODE systems and solving them simultaneously, with support for both threading and different memory layouts.
 
