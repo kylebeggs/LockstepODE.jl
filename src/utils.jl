@@ -5,11 +5,11 @@ end
 _get_ode_parameters(p, ::Int, ::Int) = p
 
 # Index management functions for LockstepFunction
-function _get_idxs(lockstep_func::LockstepFunction{PerODE, F, B}, i) where {F, B}
+function _get_idxs(lockstep_func::LockstepFunction{PerODE, F}, i) where {F}
     ((i - 1) * lockstep_func.ode_size + 1):(i * lockstep_func.ode_size)
 end
 
-function _get_idxs(lockstep_func::LockstepFunction{PerIndex, F, B}, i) where {F, B}
+function _get_idxs(lockstep_func::LockstepFunction{PerIndex, F}, i) where {F}
     i:(lockstep_func.num_odes):((lockstep_func.ode_size * (lockstep_func.num_odes - 1)) + i)
 end
 
@@ -78,7 +78,7 @@ function batch_initial_conditions(
 end
 
 """
-    extract_solutions(lockstep_func::LockstepFunction{O, F, B}, sol) where {O, F, B}
+    extract_solutions(lockstep_func::LockstepFunction{O, F}, sol) where {O, F}
 
 Extract individual ODE solutions from a batched solution.
 
@@ -115,7 +115,7 @@ ode3_states = ode3_solution.u  # Vector of state values over time
 ode3_times = ode3_solution.t    # Time points
 ```
 """
-function extract_solutions(lockstep_func::LockstepFunction{O, F, B}, sol) where {O, F, B}
+function extract_solutions(lockstep_func::LockstepFunction{O, F}, sol) where {O, F}
     individual_sols = map(1:(lockstep_func.num_odes)) do i
         start_idx = (i - 1) * lockstep_func.ode_size + 1
         end_idx = i * lockstep_func.ode_size

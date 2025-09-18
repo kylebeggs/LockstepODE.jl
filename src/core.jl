@@ -35,17 +35,16 @@ For 2 ODEs with 3 variables each, the memory layout is:
 struct PerIndex end
 
 """
-    LockstepFunction{O, F, B}
+    LockstepFunction{O, F}
 
 A wrapper that enables parallel execution of multiple instances of the same ODE system.
 
-This struct implements the callable interface required by OrdinaryDiffEq.jl, allowing 
+This struct implements the callable interface required by OrdinaryDiffEq.jl, allowing
 you to solve multiple ODEs in parallel by batching them into a single larger system.
 
 # Type Parameters
 - `O`: Memory ordering type (`PerODE` or `PerIndex`)
 - `F`: Type of the wrapped ODE function
-- `B`: Backend type for computation (e.g., `KA.CPU()`)
 
 # Fields
 - `f::F`: The ODE function to be applied to each system
@@ -53,7 +52,6 @@ you to solve multiple ODEs in parallel by batching them into a single larger sys
 - `ode_size::Int`: Size of each individual ODE system
 - `internal_threading::Bool`: Whether to use internal threading for parallel execution
 - `ordering::O`: Memory layout ordering (`PerODE` or `PerIndex`)
-- `backend::B`: Computational backend (default: `KA.CPU()`)
 
 # Example
 ```julia
@@ -69,18 +67,17 @@ end
 lockstep_func = LockstepFunction(lorenz!, 3, 100)
 ```
 """
-struct LockstepFunction{O, F, B}
+struct LockstepFunction{O, F}
     f::F
     num_odes::Int
     ode_size::Int
     internal_threading::Bool
     ordering::O
-    backend::B
 end
 
 """
-    LockstepFunction(f, ode_size::Int, num_odes::Int; 
-                     internal_threading=true, ordering=nothing, backend=KA.CPU())
+    LockstepFunction(f, ode_size::Int, num_odes::Int;
+                     internal_threading=true, ordering=PerODE())
 
 Construct a `LockstepFunction` for parallel ODE solving.
 
@@ -91,8 +88,7 @@ Construct a `LockstepFunction` for parallel ODE solving.
 
 # Keyword Arguments
 - `internal_threading::Bool = true`: Enable internal threading for parallel execution
-- `ordering = nothing`: Memory ordering (`PerODE` or `PerIndex`). If `nothing`, defaults to `PerODE()`
-- `backend = KA.CPU()`: Computational backend for kernel execution
+- `ordering = PerODE()`: Memory ordering (`PerODE` or `PerIndex`)
 
 # Returns
 A `LockstepFunction` instance that can be passed to `ODEProblem`
@@ -121,16 +117,11 @@ function LockstepFunction(
         ode_size::Int,
         num_odes::Int;
         internal_threading = true,
-        ordering = nothing,
-        backend = KA.CPU()
+        ordering = PerODE()
 )
-    _ordering_actual = ordering === nothing ? _ordering(backend) : ordering
-
-    return LockstepFunction(
-        f, num_odes, ode_size, internal_threading, _ordering_actual, backend)
+    return LockstepFunction(f, num_odes, ode_size, internal_threading, ordering)
 end
 
-_ordering(::KA.CPU) = PerODE()
 
 function ode_kernel!(i, lockstep_func::LockstepFunction, du, u, p, t)
     idxs = _get_idxs(lockstep_func, i)
@@ -141,7 +132,7 @@ function ode_kernel!(i, lockstep_func::LockstepFunction, du, u, p, t)
     return nothing
 end
 
-function (lockstep_func::LockstepFunction{O, F, KA.CPU})(du, u, p, t) where {O, F}
+function (lockstep_func::LockstepFunction{O, F})(du, u, p, t) where {O, F}
     N = lockstep_func.num_odes
     if lockstep_func.internal_threading
         OhMyThreads.tforeach(i -> ode_kernel!(i, lockstep_func, du, u, p, t), 1:N)
