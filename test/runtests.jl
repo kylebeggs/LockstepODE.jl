@@ -25,7 +25,7 @@ using OrdinaryDiffEq: ODEProblem, Tsit5, solve
         @test lockstep_func2.ordering isa PerIndex
         
         # Test direct constructor
-        lockstep_func3 = LockstepFunction(harmonic_oscillator!, 2, 2, true, PerODE(), KA.CPU())
+        lockstep_func3 = LockstepFunction(harmonic_oscillator!, 2, 2, true, PerODE())
         @test lockstep_func3.num_odes == 2
         @test lockstep_func3.ode_size == 2
     end
@@ -78,18 +78,17 @@ using OrdinaryDiffEq: ODEProblem, Tsit5, solve
         
     end
     
-    @testset "Backend Detection and GPU Support" begin
+    @testset "Array type dispatch" begin
         u0 = [1.0, 0.0, 2.0, 0.0]
-        
-        # Test CPU backend detection
-        lockstep_func_cpu = LockstepFunction(harmonic_oscillator!, 2, 2)
-        @test lockstep_func_cpu.backend isa KA.CPU
-        
-        # Test explicit backend setting
-        lockstep_func_explicit = LockstepFunction(harmonic_oscillator!, 2, 2; backend=KA.CPU())
-        @test lockstep_func_explicit.backend isa KA.CPU
-        
-        # Test backend detection utility
+
+        # Test that regular arrays work with CPU implementation
+        lockstep_func = LockstepFunction(harmonic_oscillator!, 2, 2)
+        du = zeros(4)
+        lockstep_func(du, u0, nothing, 0.0)
+        @test du[1] ≈ 0.0
+        @test du[2] ≈ -1.0
+
+        # Test backend detection utility still works
         @test KA.get_backend(u0) isa KA.CPU
     end
     

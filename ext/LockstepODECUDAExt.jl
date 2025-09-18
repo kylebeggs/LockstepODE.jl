@@ -4,16 +4,15 @@ using LockstepODE
 import KernelAbstractions as KA
 using CUDA
 
-LockstepODE._ordering(::CUDABackend) = LockstepODE.PerIndex()
 
 KA.@kernel function ode_kernel!(lockstep_func, du, u, p, t)
     i = KA.@index(Global)
     LockstepODE.ode_kernel!(i, lockstep_func, du, u, p, t)
 end
 
-# Standard dispatch for PerODE and PerIndex layouts
-function (lockstep_func::LockstepODE.LockstepFunction{O, F, CUDABackend})(
-        du, u, p, t) where {O, F}
+# CUDA array dispatch - automatically use GPU implementation for CUDA arrays
+function (lockstep_func::LockstepODE.LockstepFunction{O, F})(
+        du::CuArray, u::CuArray, p, t) where {O, F}
     backend = KA.get_backend(u)
     N = lockstep_func.num_odes
 
