@@ -6,7 +6,7 @@ One of the powerful features of LockstepODE.jl is the ability to specify differe
 
 ### Problem Setup
 
-Consider solving multiple instances of an exponential growth model in parallel:
+Consider solving multiple instances of an exponential growth model in parallel (on CPU or GPU):
 
 ```math
 \frac{du}{dt} = p \cdot u, \quad u(0) = 1
@@ -87,7 +87,7 @@ This allows each ODE to maintain different dynamics despite being solved efficie
 ### Expected Output
 
 ```
-Example 1: Per-ODE Callbacks with Different Thresholds
+Example 1: Callbacks with Different Thresholds
   ODE 1: u=2.991, resets=4
   ODE 2: u=5.983, resets=2
   ODE 3: u=2.447, resets=1
@@ -165,7 +165,7 @@ All three ODEs have identical final states and reset counts. The total reset cou
 
 ---
 
-## Example 3: Different Parameters with Per-ODE Callbacks
+## Example 3: Different Parameters with Callbacks
 
 ### Problem Setup
 
@@ -231,7 +231,7 @@ Note the use of a comprehension to generate the callback vector - this pattern s
 ### Expected Output
 
 ```
-Example 3: Per-ODE Callbacks with Different Parameters
+Example 3: Callbacks with Different Parameters
   ODE 1 (rate=0.5, thresh=4.0): u=3.993, resets=1
   ODE 2 (rate=1.0, thresh=5.0): u=4.975, resets=2
   ODE 3 (rate=1.5, thresh=6.0): u=4.016, resets=2

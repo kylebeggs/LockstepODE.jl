@@ -103,11 +103,11 @@ end
 
 ## Threading Control
 
-LockstepODE uses multi-threading to parallelize execution across different ODEs. You can control this behavior with the `internal_threading` parameter.
+LockstepODE uses multi-threading on CPU (via `OhMyThreads.jl`) or GPU kernels (via KernelAbstractions.jl) to parallelize execution across different ODEs. The `internal_threading` parameter controls CPU-only behavior; GPU arrays automatically dispatch to appropriate kernels.
 
 ### Default Behavior (Threading Enabled)
 
-By default, `internal_threading=true`, and LockstepODE uses `OhMyThreads.jl` to execute ODEs in parallel:
+By default, `internal_threading=true` on CPU, and LockstepODE uses `OhMyThreads.jl` to execute ODEs in parallel. With GPU arrays, the appropriate KernelAbstractions.jl backend is automatically selected:
 
 ```julia
 # Default: threading enabled
@@ -191,7 +191,7 @@ Threads.nthreads()  # Returns: 8 (if launched with 8 threads)
 
 ### External Parallelization
 
-For nested parallelism (e.g., parallel solves with LockstepODE inside each), disable internal threading:
+For nested CPU parallelism (e.g., parallel solves with LockstepODE inside each), disable internal threading. Note: GPU execution automatically handles batching without this consideration:
 
 ```julia
 using Distributed
@@ -252,7 +252,7 @@ end
 
 ### General Performance Tips
 
-1. **Use threading**: Keep `internal_threading=true` when solving many (>4) ODEs
+1. **Use threading on CPU**: Keep `internal_threading=true` when solving many (>4) ODEs on CPU. For GPU execution, this parameter is ignored and KernelAbstractions.jl handles parallelization
 2. **Type stability**: Ensure your ODE function is type-stable (check with `@code_warntype`)
 3. **Start with PerODE**: Use default `PerODE` layout unless benchmarks show otherwise
 4. **Appropriate solver**: Choose ODE solver based on problem stiffness
@@ -275,7 +275,7 @@ Key configuration options:
 | Option | Values | Default | Use Case |
 |--------|--------|---------|----------|
 | `ordering` | `PerODE()`, `PerIndex()` | `PerODE()` | Memory layout optimization |
-| `internal_threading` | `true`, `false` | `true` | Control parallelization |
+| `internal_threading` | `true`, `false` | `true` | Control CPU parallelization (GPU uses KernelAbstractions.jl) |
 
 **Recommended workflow**:
 1. Start with defaults (`PerODE`, `internal_threading=true`)
@@ -283,4 +283,4 @@ Key configuration options:
 3. Disable threading only for nested parallelism or debugging
 4. Use Julia's profiling tools (`@profile`, ProfileView.jl) for detailed analysis
 
-For basic usage patterns, see [Basic Usage](@ref). For event handling, see [Per-ODE Callbacks](@ref).
+For basic usage patterns, see [Basic Usage](@ref). For event handling, see [Callbacks](callbacks.md).

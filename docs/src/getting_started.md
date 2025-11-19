@@ -1,6 +1,6 @@
 # Getting Started
 
-This guide will walk you through using LockstepODE.jl to solve multiple ODEs in parallel.
+This guide will walk you through using LockstepODE.jl to solve multiple ODEs in parallel on CPU or GPU.
 
 ## Basic Workflow
 
@@ -32,7 +32,7 @@ lockstep_func = LockstepFunction(
     my_ode!,           # Your ODE function
     ode_size,          # Number of variables per ODE
     num_odes;          # Number of ODEs to solve in parallel
-    internal_threading = true,  # Enable threading (default)
+    internal_threading = true,  # Enable CPU threading (default; GPU uses kernels instead)
     ordering = PerODE()        # Memory layout (default)
 )
 ```
@@ -147,7 +147,7 @@ lockstep_func = LockstepFunction(my_ode!, ode_size, num_odes, ordering=PerIndex(
 
 ## Threading Control
 
-By default, LockstepODE uses internal threading. You can disable this if you want to control threading externally:
+By default, LockstepODE uses internal CPU threading. This parameter only affects CPU execution; GPU execution uses KernelAbstractions.jl kernels instead. You can disable this if you want to control threading externally:
 
 ```julia
 lockstep_func = LockstepFunction(my_ode!, ode_size, num_odes, internal_threading=false)

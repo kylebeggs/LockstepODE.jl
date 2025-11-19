@@ -216,4 +216,4 @@ Key takeaways for basic usage:
 3. **Use standard workflow**: `ODEProblem` → `solve` → `extract_solutions`
 4. **Extracted solutions are standard** `ODESolution` objects with full functionality
 
-For more advanced usage patterns, see [Advanced Configuration](@ref) and [Per-ODE Callbacks](@ref).
+For more advanced usage patterns, see [Advanced Configuration](@ref) and [Callbacks](callbacks.md).
