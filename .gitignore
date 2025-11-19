@@ -1,7 +1,9 @@
-/Manifest*.toml
+Manifest.toml
 .vscode
 .claude
 CLAUDE.md
 dev/
 docs/build/
 docs/node_modules/
+package.json
+package-lock.json

@@ -10,7 +10,7 @@ LockstepODE.jl is a Julia package for solving multiple ordinary differential equ
 
 - **CPU Threading**: Automatic parallelization across ODE systems using `OhMyThreads.jl`
 - **Multi-GPU support**: Automatic GPU acceleration for CUDA (NVIDIA), AMDGPU (AMD), Metal (Apple), and oneAPI (Intel) via optional extensions
-- **Per-ODE callbacks**: Apply different callbacks to each ODE system or share callbacks across all systems
+- **Callbacks**: Apply different callbacks to each ODE system or share callbacks across all systems
 - **Flexible memory layouts**: Support for both per-ODE (`PerODE`) and per-index (`PerIndex`) data organization
 - **Standard workflow**: Uses standard `OrdinaryDiffEq.jl` workflow with `ODEProblem` and `solve`
 - **Utility functions**: Built-in functions for batching initial conditions and extracting solutions
@@ -84,7 +84,7 @@ Solve the same ODE system with different starting points simultaneously. Lockste
 
 See the [Basic Usage](https://kylebeggs.github.io/LockstepODE.jl/dev/examples/basic_usage/) example for detailed implementation.
 
-### Per-ODE Callbacks
+### Callbacks
 
 Apply different callbacks to each ODE in your batch. Each ODE can have its own event detection and handling logic while still being solved efficiently in parallel. Supports both `DiscreteCallback` and `ContinuousCallback` from OrdinaryDiffEq.jl.
 
@@ -94,7 +94,7 @@ Example use cases:
 - Heterogeneous stopping conditions
 - Per-instance event logging
 
-See the [Per-ODE Callbacks](https://kylebeggs.github.io/LockstepODE.jl/dev/examples/callbacks/) example for comprehensive examples.
+See the [Callbacks](https://kylebeggs.github.io/LockstepODE.jl/dev/examples/callbacks/) example for comprehensive examples.
 
 ### Memory Layouts
 

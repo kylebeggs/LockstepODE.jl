@@ -1,4 +1,4 @@
-# Per-ODE Callbacks Example
+# Callbacks Example
 # Demonstrates using different callbacks for different ODE systems
 
 using LockstepODE
