@@ -168,3 +168,56 @@ Parameters can be specified in two ways:
    p = [p1, p2, p3, ...]  # Vector with one element per ODE
    prob = ODEProblem(lockstep_func, u0_batched, tspan, p)
    ```
+
+## GPU Acceleration
+
+LockstepODE.jl supports multiple GPU backends through automatic array-type dispatch. Simply use GPU arrays as initial conditions, and the appropriate GPU kernel will be used automatically.
+
+### Supported GPU Backends
+
+#### NVIDIA GPUs (CUDA)
+```julia
+using LockstepODE
+using CUDA  # Activates CUDA extension
+
+u0_batched = CuArray(u0_batched)  # Move to GPU
+prob = ODEProblem(lockstep_func, u0_batched, tspan, p)
+sol = solve(prob, Tsit5())  # Automatically uses CUDA kernel
+```
+
+#### AMD GPUs (ROCm)
+```julia
+using LockstepODE
+using AMDGPU  # Activates AMDGPU extension
+
+u0_batched = ROCArray(u0_batched)  # Move to AMD GPU
+prob = ODEProblem(lockstep_func, u0_batched, tspan, p)
+sol = solve(prob, Tsit5())  # Automatically uses ROCm kernel
+```
+
+#### Apple Silicon (Metal)
+```julia
+using LockstepODE
+using Metal  # Activates Metal extension
+
+u0_batched = MtlArray(u0_batched)  # Move to Metal GPU
+prob = ODEProblem(lockstep_func, u0_batched, tspan, p)
+sol = solve(prob, Tsit5())  # Automatically uses Metal kernel
+```
+
+#### Intel GPUs (oneAPI)
+```julia
+using LockstepODE
+using oneAPI  # Activates oneAPI extension
+
+u0_batched = oneArray(u0_batched)  # Move to Intel GPU
+prob = ODEProblem(lockstep_func, u0_batched, tspan, p)
+sol = solve(prob, Tsit5())  # Automatically uses oneAPI kernel
+```
+
+### GPU Notes
+
+- GPU backends are optional: only install the ones you need
+- Backend selection is automatic based on array type
+- All backends use the same `LockstepFunction` - no code changes needed
+- GPU acceleration is most beneficial for large numbers of ODEs (100+)

@@ -18,7 +18,8 @@ LockstepODE.jl is a simple package that enables solving of multiple ordinary dif
 - **SciML integration**: Fully compatible with the DifferentialEquations.jl ecosystem
 - **Flexible memory layouts**: Choose between `PerODE` (default) and `PerIndex` ordering for optimal performance
 - **Thread-based parallelism**: Built-in support for multi-threading via OhMyThreads.jl
-- **GPU support**: CUDA acceleration available via KernelAbstractions.jl
+- **Multi-GPU support**: Automatic GPU acceleration for CUDA (NVIDIA), AMDGPU (AMD), Metal (Apple), and oneAPI (Intel) backends
+- **Per-ODE callbacks**: Apply different callbacks to each ODE or share callbacks across all systems
 
 ## Installation
 

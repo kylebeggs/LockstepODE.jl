@@ -14,6 +14,12 @@ makedocs(;
     pages = [
         "Home" => "index.md",
         "Getting Started" => "getting_started.md",
+        "Examples" => [
+            "Overview" => "examples/overview.md",
+            "Per-ODE Callbacks" => "examples/callbacks.md",
+            "Basic Usage" => "examples/basic_usage.md",
+            "Advanced Configuration" => "examples/advanced_configuration.md"
+        ],
         "API Reference" => "api.md"
     ],
     warnonly = true
