@@ -22,5 +22,12 @@ extract_solutions
 ## Constructor
 
 ```@docs
-LockstepFunction(f, ode_size::Int, num_odes::Int; internal_threading=true, ordering=nothing, backend=KA.CPU())
+LockstepFunction(f, ode_size::Int, num_odes::Int; internal_threading=true, ordering=PerODE(), callbacks=nothing)
+```
+
+## Callbacks
+
+```@docs
+SciMLBase.ODEProblem
+create_lockstep_callbacks
 ```

@@ -14,8 +14,14 @@ makedocs(;
     pages = [
         "Home" => "index.md",
         "Getting Started" => "getting_started.md",
+        "Examples" => [
+            "Basic Usage" => "examples/basic_usage.md",
+            "Callbacks" => "examples/callbacks.md",
+            "Advanced Configuration" => "examples/advanced_configuration.md"
+        ],
         "API Reference" => "api.md"
     ],
+    checkdocs = :exports,
     warnonly = true
 )
 
