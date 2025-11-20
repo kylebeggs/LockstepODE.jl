@@ -1,8 +1,19 @@
 # Parameter handling functions
-function _get_ode_parameters(p::AbstractVector, i::Int, num_odes::Int)
-    length(p) == num_odes ? p[i] : p
+function _get_ode_parameters(p::AbstractVector, i::Int, num_odes::Int, param_size::Int)
+    if length(p) == num_odes
+        # Single scalar parameter per ODE
+        return p[i]
+    elseif param_size > 0 && length(p) == num_odes * param_size
+        # Batched parameters: extract slice for ODE i
+        start_idx = (i - 1) * param_size + 1
+        end_idx = i * param_size
+        return view(p, start_idx:end_idx)
+    else
+        # Shared parameters across all ODEs
+        return p
+    end
 end
-_get_ode_parameters(p, ::Int, ::Int) = p
+_get_ode_parameters(p, ::Int, ::Int, ::Int) = p
 
 # Callback handling functions
 function _get_ode_callback(callbacks::AbstractVector, i::Int, num_odes::Int)

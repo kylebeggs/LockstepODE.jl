@@ -36,7 +36,7 @@ For 2 ODEs with 3 variables each, the memory layout is:
 struct PerIndex end
 
 """
-    LockstepFunction{O, F, C}
+    LockstepFunction{O, W<:AbstractODEWrapper, C}
 
 A wrapper that enables parallel execution of multiple instances of the same ODE system.
 
@@ -45,11 +45,11 @@ you to solve multiple ODEs in parallel by batching them into a single larger sys
 
 # Type Parameters
 - `O`: Memory ordering type (`PerODE` or `PerIndex`)
-- `F`: Type of the wrapped ODE function
+- `W`: Type of the ODE wrapper (e.g., `SimpleWrapper` for regular functions, `MTKWrapper` for ModelingToolkit)
 - `C`: Type of the callbacks (Nothing or AbstractVector)
 
 # Fields
-- `f::F`: The ODE function to be applied to each system
+- `wrapper::W`: The wrapper containing the ODE function/system
 - `num_odes::Int`: Number of ODE systems to solve in parallel
 - `ode_size::Int`: Size of each individual ODE system
 - `internal_threading::Bool`: Whether to use internal threading for parallel execution
@@ -70,8 +70,8 @@ end
 lockstep_func = LockstepFunction(lorenz!, 3, 100)
 ```
 """
-struct LockstepFunction{O, F, C}
-    f::F
+struct LockstepFunction{O, W<:AbstractODEWrapper, C}
+    wrapper::W
     num_odes::Int
     ode_size::Int
     internal_threading::Bool
@@ -150,7 +150,9 @@ function LockstepFunction(
         ordering = PerODE(),
         callbacks = nothing
 )
-    return LockstepFunction(f, num_odes, ode_size, internal_threading, ordering, callbacks)
+    # Wrap the function in a SimpleWrapper (default for regular Julia functions)
+    wrapper = SimpleWrapper(f)
+    return LockstepFunction(wrapper, num_odes, ode_size, internal_threading, ordering, callbacks)
 end
 
 """
@@ -180,7 +182,7 @@ end
 function SubIntegrator(integrator, lockstep_func, ode_idx)
     idxs = _get_idxs(lockstep_func, ode_idx)
     u_view = view(integrator.u, idxs)
-    p_i = _get_ode_parameters(integrator.p, ode_idx, lockstep_func.num_odes)
+    p_i = _get_ode_parameters(integrator.p, ode_idx, lockstep_func.num_odes, param_size(lockstep_func.wrapper))
     return SubIntegrator(integrator, lockstep_func, ode_idx, u_view, p_i)
 end
 
@@ -357,12 +359,12 @@ end
     idxs = _get_idxs(lockstep_func, i)
     u_i = view(u, idxs)
     du_i = view(du, idxs)
-    p_i = _get_ode_parameters(p, i, lockstep_func.num_odes)
-    lockstep_func.f(du_i, u_i, p_i, t)
+    p_i = _get_ode_parameters(p, i, lockstep_func.num_odes, param_size(lockstep_func.wrapper))
+    lockstep_func.wrapper(du_i, u_i, p_i, t)
     return nothing
 end
 
-function (lockstep_func::LockstepFunction{O, F, C})(du, u, p, t) where {O, F, C}
+function (lockstep_func::LockstepFunction{O, W, C})(du, u, p, t) where {O, W, C}
     N = lockstep_func.num_odes
     if lockstep_func.internal_threading
         OhMyThreads.tforeach(i -> ode_kernel!(i, lockstep_func, du, u, p, t), 1:N)
