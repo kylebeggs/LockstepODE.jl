@@ -164,6 +164,9 @@ This struct is used internally by the callback system to provide per-ODE callbac
 access to only their ODE's state, while maintaining the ability to modify the full
 integrator's state.
 
+Implements SymbolicIndexingInterface for compatibility with ModelingToolkit's `getu()` and
+other symbolic utilities (when used with MTK systems).
+
 # Fields
 - `parent`: The full integrator from OrdinaryDiffEq.jl
 - `lockstep_func`: The LockstepFunction containing metadata
@@ -235,6 +238,11 @@ function create_lockstep_callbacks(lockstep_func::LockstepFunction)
 
     wrapped_callbacks = []
 
+    # Pre-allocate cache for SubIntegrators to avoid allocation on every callback invocation
+    # SubIntegrator.u is a view that automatically reflects integrator.u changes
+    # SubIntegrator property access forwards to parent, so no updates needed after initialization
+    sub_cache = Vector{Union{Nothing, SubIntegrator}}(nothing, lockstep_func.num_odes)
+
     for i in 1:lockstep_func.num_odes
         cb = _get_ode_callback(lockstep_func.callbacks, i, lockstep_func.num_odes)
         isnothing(cb) && continue
@@ -242,13 +250,15 @@ function create_lockstep_callbacks(lockstep_func::LockstepFunction)
         # Wrap the callback for this ODE
         if cb isa DiscreteCallback
             wrapped_condition = function (u, t, integrator)
-                sub_int = SubIntegrator(integrator, lockstep_func, i)
-                return cb.condition(sub_int.u, t, sub_int)
+                if isnothing(sub_cache[i])
+                    sub_cache[i] = SubIntegrator(integrator, lockstep_func, i)
+                end
+                return cb.condition(sub_cache[i].u, t, sub_cache[i])
             end
 
             wrapped_affect! = function (integrator)
-                sub_int = SubIntegrator(integrator, lockstep_func, i)
-                cb.affect!(sub_int)
+                # SubIntegrator already initialized by condition check
+                cb.affect!(sub_cache[i])
                 return nothing
             end
 
@@ -256,20 +266,22 @@ function create_lockstep_callbacks(lockstep_func::LockstepFunction)
                                                      save_positions=cb.save_positions))
         elseif cb isa ContinuousCallback
             wrapped_condition = function (u, t, integrator)
-                sub_int = SubIntegrator(integrator, lockstep_func, i)
-                return cb.condition(sub_int.u, t, sub_int)
+                if isnothing(sub_cache[i])
+                    sub_cache[i] = SubIntegrator(integrator, lockstep_func, i)
+                end
+                return cb.condition(sub_cache[i].u, t, sub_cache[i])
             end
 
             wrapped_affect! = function (integrator)
-                sub_int = SubIntegrator(integrator, lockstep_func, i)
-                cb.affect!(sub_int)
+                # SubIntegrator already initialized by condition check
+                cb.affect!(sub_cache[i])
                 return nothing
             end
 
             if !isnothing(cb.affect_neg!)
                 wrapped_affect_neg! = function (integrator)
-                    sub_int = SubIntegrator(integrator, lockstep_func, i)
-                    cb.affect_neg!(sub_int)
+                    # SubIntegrator already initialized by condition check
+                    cb.affect_neg!(sub_cache[i])
                     return nothing
                 end
             else
@@ -360,9 +372,14 @@ end
     u_i = view(u, idxs)
     du_i = view(du, idxs)
     p_i = _get_ode_parameters(p, i, lockstep_func.num_odes, param_size(lockstep_func.wrapper))
-    lockstep_func.wrapper(du_i, u_i, p_i, t)
+    # Pass ODE index to wrapper for per-ODE parameter support
+    # Wrappers can dispatch on the 5-arg vs 4-arg signature
+    _call_wrapper(lockstep_func.wrapper, du_i, u_i, p_i, t, i)
     return nothing
 end
+
+# Default wrapper call (4-arg signature for backwards compatibility)
+@inline _call_wrapper(wrapper, du, u, p, t, i) = wrapper(du, u, p, t)
 
 function (lockstep_func::LockstepFunction{O, W, C})(du, u, p, t) where {O, W, C}
     N = lockstep_func.num_odes
