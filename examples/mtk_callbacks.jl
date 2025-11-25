@@ -25,17 +25,16 @@ eqs = [
     D(y) ~ δ * x * y - γ * y   # Predator growth and death
 ]
 @named lotka_volterra = ODESystem(eqs, t)
-lotka_volterra = complete(lotka_volterra)  # Complete system to enable partial parameter specification
 
 # Create symbolic accessors using standard MTK getu()
+# Note: getu works on each individual integrator in v2.0
 get_x = getu(lotka_volterra, x)
 get_y = getu(lotka_volterra, y)
 
-# Create LockstepFunction for 3 parallel ODEs
+# Number of parallel ODEs
 num_odes = 3
-lockstep_func = LockstepFunction(lotka_volterra, 2, num_odes)
 
-# Same threshold for all ODEs to expose the getu bug
+# Same threshold for all ODEs
 thresholds = [2.0, 2.0, 2.0]
 reset_counts = zeros(Int, num_odes)
 reset_times = [Float64[] for _ in 1:num_odes]
@@ -55,32 +54,24 @@ callbacks = [DiscreteCallback(
              for i in 1:num_odes]
 
 # Create LockstepFunction with callbacks
-lockstep_func_with_cb = LockstepFunction(
-    lotka_volterra, 2, num_odes, callbacks = callbacks
-)
-
-# Specify parameters symbolically for each ODE
-# Partial specification supported: only provide changed parameters, rest use defaults
-params = [
-    Dict(),                      # ODE 1: use all defaults (α=1.5, β=1.0, γ=3.0, δ=1.0)
-    Dict(α => 1.0, β => 2.0, γ => 2.0, δ => 1.5),  # ODE 2: all specified
-    Dict(β => 0.5, δ => 2.5)     # ODE 3: only β,δ changed, α,γ use defaults
-]
+lf = LockstepFunction(lotka_volterra, num_odes; callbacks=callbacks)
 
 # Initial conditions: different for each ODE to show per-ODE behavior
-u0 = vcat([1.0, 1.0], [2.0, 1.5], [3.0, 2.0])
+u0s = [[1.0, 1.0], [2.0, 1.5], [3.0, 2.0]]
 tspan = (0.0, 10.0)
 
+# Per-ODE parameters as scalars (single parameter systems use scalar p)
+# For multi-parameter systems, you'd use vectors or tuples
+# Here we use the default parameters from the system
+ps = [nothing, nothing, nothing]  # Use defaults for all ODEs
+
 # Solve
-prob = ODEProblem(lockstep_func_with_cb, u0, tspan, params)
-sol = solve(prob, Tsit5())
+sol = LockstepODE.solve(lf, u0s, tspan, ps, Tsit5())
 
 # Display results
 println("\nParameters Used:")
 println("="^60)
-println("ODE 1: α=1.5 (default), β=1.0 (default), γ=3.0 (default), δ=1.0 (default)")
-println("ODE 2: α=1.0, β=2.0, γ=2.0, δ=1.5")
-println("ODE 3: α=1.5 (default), β=0.5, γ=3.0 (default), δ=2.5")
+println("All ODEs use defaults: α=1.5, β=1.0, γ=3.0, δ=1.0")
 
 println("\nCallback Results:")
 println("="^60)
@@ -88,7 +79,6 @@ for i in 1:num_odes
     println("ODE $i (threshold=$(thresholds[i])):")
     println("  Resets: $(reset_counts[i])")
     println("  Reset times: $(round.(reset_times[i], digits=3))")
-    prey_idx = 2 * (i - 1) + 1
-    pred_idx = 2 * (i - 1) + 2
-    println("  Final state: prey=$(round(sol.u[end][prey_idx], digits=3)), predator=$(round(sol.u[end][pred_idx], digits=3))")
+    isol = sol[i]
+    println("  Final state: prey=$(round(isol.u[end][1], digits=3)), predator=$(round(isol.u[end][2], digits=3))")
 end
