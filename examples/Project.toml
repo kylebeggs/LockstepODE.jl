@@ -2,4 +2,5 @@
 LockstepODE = "6148aecd-d198-440c-a04f-51208fe3c037"
 ModelingToolkit = "961ee093-0014-501f-94e3-6117800e7a78"
 OrdinaryDiffEq = "1dea7af3-3e70-54e6-95c3-0bf5283fa5ed"
+SymbolicIndexingInterface = "2efcf032-c050-4f8e-a9bb-153293bab1f5"
 TWorld = "7b3bcaa7-e8d1-4d64-97d9-61cb5d39b583"

@@ -1,11 +1,16 @@
 module LockstepODE
 
-include("wrappers.jl")
-include("core.jl")
-include("utils.jl")
+include("types.jl")
+include("solve.jl")
+include("solution.jl")
 
-export LockstepFunction, PerODE, PerIndex
-export batch_initial_conditions, extract_solutions, create_lockstep_callbacks
-export AbstractODEWrapper, SimpleWrapper, param_size
+# Core types
+export LockstepFunction, LockstepSolution
+
+# Solve interface
+export solve
+
+# Solution utilities
+export extract_solutions, extract_at_time, get_sync_states
 
 end
