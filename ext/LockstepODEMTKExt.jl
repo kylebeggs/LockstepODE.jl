@@ -10,12 +10,6 @@ using LockstepODE
 using ModelingToolkit
 using ModelingToolkit: ODESystem, ODEFunction, parameters, unknowns
 
-# Handle API changes: structural_simplify → mtkcompile (MTK v10+)
-const simplify_system = if isdefined(ModelingToolkit, :mtkcompile)
-    ModelingToolkit.mtkcompile
-else
-    ModelingToolkit.structural_simplify
-end
 import LockstepODE: LockstepFunction
 
 """
@@ -33,10 +27,9 @@ work natively without special wrappers.
 
 # Keyword Arguments
 - `sync_interval::Real=0.0`: Time between sync points (0 = no sync)
-- `coupling!::Function=nothing`: In-place coupling function `coupling!(states, t)`
+- `coupling::Function=nothing`: In-place coupling function `coupling!(states, t)`
 - `coupling_indices::Vector{Int}=nothing`: Which indices to couple
 - `callbacks=nothing`: Per-ODE callbacks (single or Vector)
-- `simplify::Bool=true`: Whether to structurally simplify the system
 
 # Example
 ```julia
@@ -68,33 +61,29 @@ lf_with_cb = LockstepFunction(lorenz, 10; callbacks=cb)
 ```
 """
 function LockstepFunction(
-    sys::ODESystem,
-    num_odes::Integer;
-    sync_interval::Real=0.0,
-    coupling::Union{Nothing, Function}=nothing,
-    coupling_indices::Union{Nothing, AbstractVector{<:Integer}}=nothing,
-    callbacks=nothing,
-    simplify::Bool=true
+        sys::ODESystem,
+        num_odes::Integer;
+        sync_interval::Real = 0.0,
+        coupling::Union{Nothing, Function} = nothing,
+        coupling_indices::Union{Nothing, AbstractVector{<:Integer}} = nothing,
+        callbacks = nothing
 )
-    # Simplify system if requested
-    sys_to_use = simplify ? simplify_system(sys) : sys
-
     # Get the compiled ODE function
-    ode_func = ODEFunction(sys_to_use)
+    ode_func = ODEFunction(sys)
     f = ode_func.f
 
     # Get system size
-    ode_size = length(unknowns(sys_to_use))
+    ode_size = length(unknowns(sys))
 
     # Create LockstepFunction with the compiled MTK function
     return LockstepFunction(
         f,
         ode_size,
         num_odes;
-        sync_interval=sync_interval,
-        coupling=coupling,
-        coupling_indices=coupling_indices,
-        callbacks=callbacks
+        sync_interval = sync_interval,
+        coupling = coupling,
+        coupling_indices = coupling_indices,
+        callbacks = callbacks
     )
 end
 
@@ -130,8 +119,8 @@ ps = transform_parameters(sys, params)
 ```
 """
 function transform_parameters(
-    sys::ODESystem,
-    params::Vector{<:Union{<:AbstractDict, <:AbstractVector{<:Pair}}}
+        sys::ODESystem,
+        params::Vector{<:Union{<:AbstractDict, <:AbstractVector{<:Pair}}}
 )
     canonical_params = parameters(sys)
     defaults_dict = ModelingToolkit.defaults(sys)

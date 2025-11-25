@@ -2,13 +2,14 @@
     using LockstepODE
     using OrdinaryDiffEq
     using ModelingToolkit
-    using ModelingToolkit: t_nounits as t, D_nounits as D
+    using ModelingToolkit: t_nounits as t, D_nounits as D, mtkcompile
 
     @parameters α
     @variables x(t)
 
     eqs = [D(x) ~ -α * x]
     @named decay_sys = ODESystem(eqs, t)
+    decay_sys = mtkcompile(decay_sys)
 
     lf = LockstepFunction(decay_sys, 3)
 
@@ -29,7 +30,7 @@ end
     using LockstepODE
     using OrdinaryDiffEq
     using ModelingToolkit
-    using ModelingToolkit: t_nounits as t, D_nounits as D
+    using ModelingToolkit: t_nounits as t, D_nounits as D, mtkcompile
 
     @parameters ω
     @variables x(t) v(t)
@@ -39,6 +40,7 @@ end
         D(v) ~ -ω^2 * x
     ]
     @named oscillator = ODESystem(eqs, t)
+    oscillator = mtkcompile(oscillator)
 
     lf = LockstepFunction(oscillator, 3)
 
@@ -56,13 +58,14 @@ end
     using LockstepODE
     using OrdinaryDiffEq
     using ModelingToolkit
-    using ModelingToolkit: t_nounits as t, D_nounits as D
+    using ModelingToolkit: t_nounits as t, D_nounits as D, mtkcompile
 
     @parameters r
     @variables x(t)
 
     eqs = [D(x) ~ r * x]
     @named growth = ODESystem(eqs, t)
+    growth = mtkcompile(growth)
 
     lf = LockstepFunction(growth, 3)
 
@@ -85,13 +88,14 @@ end
     using LockstepODE
     using OrdinaryDiffEq
     using ModelingToolkit
-    using ModelingToolkit: t_nounits as t, D_nounits as D
+    using ModelingToolkit: t_nounits as t, D_nounits as D, mtkcompile
 
     @parameters r
     @variables x(t)
 
     eqs = [D(x) ~ r * x]
     @named growth = ODESystem(eqs, t)
+    growth = mtkcompile(growth)
 
     reset_count = Ref(0)
 
@@ -120,7 +124,7 @@ end
     using LockstepODE
     using OrdinaryDiffEq
     using ModelingToolkit
-    using ModelingToolkit: t_nounits as t, D_nounits as D
+    using ModelingToolkit: t_nounits as t, D_nounits as D, mtkcompile
     using Statistics
 
     @parameters α
@@ -128,6 +132,7 @@ end
 
     eqs = [D(x) ~ -α * x]
     @named decay = ODESystem(eqs, t)
+    decay = mtkcompile(decay)
 
     function couple!(states, t)
         m = mean(s[1] for s in states)

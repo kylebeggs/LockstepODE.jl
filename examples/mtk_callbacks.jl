@@ -14,7 +14,7 @@ Pkg.activate(@__DIR__)
 using LockstepODE
 using OrdinaryDiffEq
 using ModelingToolkit
-using ModelingToolkit: t_nounits as t, D_nounits as D, getu
+using ModelingToolkit: t_nounits as t, D_nounits as D, getu, mtkcompile
 
 # Define Lotka-Volterra (predator-prey) system with default parameters
 @parameters α=1.5 β=1.0 γ=3.0 δ=1.0  # Set default parameter values
@@ -25,6 +25,7 @@ eqs = [
     D(y) ~ δ * x * y - γ * y   # Predator growth and death
 ]
 @named lotka_volterra = ODESystem(eqs, t)
+lotka_volterra = mtkcompile(lotka_volterra)  # Compile system (required for MTK v10+)
 
 # Create symbolic accessors using standard MTK getu()
 # Note: getu works on each individual integrator in v2.0
@@ -60,12 +61,10 @@ lf = LockstepFunction(lotka_volterra, num_odes; callbacks=callbacks)
 u0s = [[1.0, 1.0], [2.0, 1.5], [3.0, 2.0]]
 tspan = (0.0, 10.0)
 
-# Extract default parameters from the system and pass explicitly
-# MTK v10 requires explicit parameters to be passed
-using ModelingToolkit: defaults, parameters, mtkcompile
-sys = mtkcompile(lotka_volterra)
-default_vals = defaults(sys)
-param_syms = parameters(sys)
+# Extract default parameters from the compiled system
+using ModelingToolkit: defaults, parameters
+default_vals = defaults(lotka_volterra)
+param_syms = parameters(lotka_volterra)
 p = [Float64(default_vals[ps]) for ps in param_syms]
 
 # Solve with explicit parameter vector (same for all ODEs)
