@@ -60,13 +60,16 @@ lf = LockstepFunction(lotka_volterra, num_odes; callbacks=callbacks)
 u0s = [[1.0, 1.0], [2.0, 1.5], [3.0, 2.0]]
 tspan = (0.0, 10.0)
 
-# Per-ODE parameters as scalars (single parameter systems use scalar p)
-# For multi-parameter systems, you'd use vectors or tuples
-# Here we use the default parameters from the system
-ps = [nothing, nothing, nothing]  # Use defaults for all ODEs
+# Extract default parameters from the system and pass explicitly
+# MTK v10 requires explicit parameters to be passed
+using ModelingToolkit: defaults, parameters, mtkcompile
+sys = mtkcompile(lotka_volterra)
+default_vals = defaults(sys)
+param_syms = parameters(sys)
+p = [Float64(default_vals[ps]) for ps in param_syms]
 
-# Solve
-sol = LockstepODE.solve(lf, u0s, tspan, ps, Tsit5())
+# Solve with explicit parameter vector (same for all ODEs)
+sol = LockstepODE.solve(lf, u0s, tspan, p, Tsit5())
 
 # Display results
 println("\nParameters Used:")
