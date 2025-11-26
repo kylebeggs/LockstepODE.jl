@@ -30,7 +30,8 @@ cb3 = DiscreteCallback(
 lf = LockstepFunction(exponential_growth!, 1, 3; callbacks=[cb1, cb2, cb3])
 u0s = [[1.0], [1.0], [1.0]]
 ps = [1.0, 1.0, 1.0]
-sol = LockstepODE.solve(lf, u0s, (0.0, 5.0), ps, Tsit5())
+prob = LockstepProblem(lf, u0s, (0.0, 5.0), ps)
+sol = solve(prob, Tsit5())
 
 for (i, isol) in enumerate(sol.solutions)
     println("  ODE $i: u=$(round(isol.u[end][1], digits=3)), resets=$(callback_counts[i])")
@@ -45,7 +46,8 @@ shared_cb = DiscreteCallback(
 )
 
 lf_shared = LockstepFunction(exponential_growth!, 1, 3; callbacks=shared_cb)
-sol_shared = LockstepODE.solve(lf_shared, u0s, (0.0, 5.0), ps, Tsit5())
+prob_shared = LockstepProblem(lf_shared, u0s, (0.0, 5.0), ps)
+sol_shared = solve(prob_shared, Tsit5())
 
 for (i, isol) in enumerate(sol_shared.solutions)
     println("  ODE $i: u=$(round(isol.u[end][1], digits=3))")
@@ -64,7 +66,8 @@ callbacks_varied = [DiscreteCallback(
                     ) for i in 1:3]
 
 lf_varied = LockstepFunction(exponential_growth!, 1, 3; callbacks=callbacks_varied)
-sol_varied = LockstepODE.solve(lf_varied, u0s, (0.0, 5.0), growth_rates, Tsit5())
+prob_varied = LockstepProblem(lf_varied, u0s, (0.0, 5.0), growth_rates)
+sol_varied = solve(prob_varied, Tsit5())
 
 for (i, isol) in enumerate(sol_varied.solutions)
     println("  ODE $i (rate=$(growth_rates[i]), thresh=$(thresholds[i])): u=$(round(isol.u[end][1], digits=3)), resets=$(length(callback_logs[i]))")

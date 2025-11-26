@@ -75,7 +75,7 @@ Vector of individual ODESolution objects.
 # Example
 ```julia
 lf = LockstepFunction(f!, 3, 10)
-prob = ODEProblem(lf, u0s, tspan, p)
+prob = LockstepProblem(lf, u0s, tspan, p)
 sol = solve(prob, Tsit5())
 
 individual_sols = extract_solutions(lf, sol)
@@ -108,57 +108,18 @@ function extract_at_time(sol::LockstepSolution, t::Real)
     return [s(t) for s in sol.solutions]
 end
 
-"""
-    get_sync_states(sol::LockstepSolution, sync_idx::Int)
-
-Get all ODE states at a specific sync point.
-
-# Arguments
-- `sol`: The LockstepSolution
-- `sync_idx`: Index into `sol.sync_times` (1-based)
-
-# Returns
-Vector of state vectors at the specified sync time.
-
-# Example
-```julia
-# Get states at first sync point
-states = get_sync_states(sol, 1)
-
-# Get states at last sync point
-states = get_sync_states(sol, length(sol.sync_times))
-```
-"""
-function get_sync_states(sol::LockstepSolution, sync_idx::Int)
-    1 <= sync_idx <= length(sol.sync_times) || throw(BoundsError(sol.sync_times, sync_idx))
-    t = sol.sync_times[sync_idx]
-    return extract_at_time(sol, t)
-end
-
 # ============================================================================
 # Display
 # ============================================================================
 
 function Base.show(io::IO, sol::LockstepSolution)
     n = length(sol.solutions)
-    n_sync = length(sol.sync_times)
-    print(io, "LockstepSolution with $n ODEs")
-    if n_sync > 0
-        print(io, ", $n_sync sync points")
-    end
-    print(io, " ($(sol.retcode))")
+    print(io, "LockstepSolution with $n ODEs ($(sol.retcode))")
 end
 
 function Base.show(io::IO, ::MIME"text/plain", sol::LockstepSolution)
     n = length(sol.solutions)
-    n_sync = length(sol.sync_times)
     println(io, "LockstepSolution")
     println(io, "  ODEs: $n")
-    println(io, "  Sync points: $n_sync")
-    if n_sync > 0 && n_sync <= 10
-        println(io, "  Sync times: ", sol.sync_times)
-    elseif n_sync > 10
-        println(io, "  Sync times: [$(sol.sync_times[1]), ..., $(sol.sync_times[end])]")
-    end
     print(io, "  Return code: $(sol.retcode)")
 end

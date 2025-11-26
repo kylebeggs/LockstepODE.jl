@@ -1,33 +1,25 @@
 """
 Core type definitions for LockstepODE v2.0
 
-Multi-integrator architecture: N independent ODEs synchronized at fixed intervals.
+Multi-integrator architecture: N independent ODEs solved in parallel.
 """
 
-using SciMLBase: ReturnCode
+using SciMLBase: ReturnCode, ODEFunction
 
 """
     LockstepFunction{F, C}
 
-Coordinates solving N independent ODEs with optional synchronization.
+Coordinates solving N independent ODEs in parallel.
 
 # Fields
 - `f::F`: ODE function with signature `f(du, u, p, t)`
 - `num_odes::Int`: Number of independent ODEs
 - `ode_size::Int`: Size of each ODE's state vector
-- `sync_interval::Float64`: Time between sync points (0 = no sync)
-- `coupling!`: In-place coupling function `coupling!(states, t)` or `nothing`
-- `coupling_indices`: Indices to couple, or `nothing` for all indices
 - `callbacks::C`: Per-ODE callbacks (nothing, single, or Vector)
 
 # Constructor
 ```julia
-LockstepFunction(f, ode_size, num_odes;
-    sync_interval=0.0,
-    coupling!=nothing,
-    coupling_indices=nothing,
-    callbacks=nothing
-)
+LockstepFunction(f, ode_size, num_odes; callbacks=nothing)
 ```
 
 # Example
@@ -39,28 +31,13 @@ function lorenz!(du, u, p, t)
     du[3] = u[1]*u[2] - β*u[3]
 end
 
-# Mean-field coupling on second component
-function couple!(states, t)
-    x2_mean = sum(s[2] for s in states) / length(states)
-    for s in states
-        s[2] = x2_mean
-    end
-end
-
-lf = LockstepFunction(lorenz!, 3, 10;
-    sync_interval=0.1,
-    coupling=couple!,
-    coupling_indices=[2]
-)
+lf = LockstepFunction(lorenz!, 3, 10)
 ```
 """
 struct LockstepFunction{F, C}
     f::F
     num_odes::Int
     ode_size::Int
-    sync_interval::Float64
-    coupling::Union{Nothing, Function}  # In-place coupling function coupling!(states, t)
-    coupling_indices::Union{Nothing, Vector{Int}}
     callbacks::C
 end
 
@@ -68,62 +45,59 @@ function LockstepFunction(
     f::F,
     ode_size::Integer,
     num_odes::Integer;
-    sync_interval::Real=0.0,
-    coupling::Union{Nothing, Function}=nothing,
-    coupling_indices::Union{Nothing, AbstractVector{<:Integer}}=nothing,
     callbacks::C=nothing
 ) where {F, C}
-    # Validate inputs
     num_odes > 0 || throw(ArgumentError("num_odes must be positive, got $num_odes"))
     ode_size > 0 || throw(ArgumentError("ode_size must be positive, got $ode_size"))
-    sync_interval >= 0 || throw(ArgumentError("sync_interval must be non-negative, got $sync_interval"))
 
-    # Validate coupling_indices
-    indices = if coupling_indices === nothing
-        nothing
-    else
-        idx_vec = Vector{Int}(coupling_indices)
-        for idx in idx_vec
-            1 <= idx <= ode_size || throw(ArgumentError(
-                "coupling_indices must be in range [1, $ode_size], got $idx"
-            ))
-        end
-        idx_vec
+    return LockstepFunction{F, C}(f, Int(num_odes), Int(ode_size), callbacks)
+end
+
+"""
+    (lf::LockstepFunction)(du, u, p, t)
+
+Callable interface for use with ODEProblem. Operates on flat interleaved state vector.
+
+State layout: [u1_1, u1_2, ..., u1_M, u2_1, u2_2, ..., u2_M, ..., uN_1, ..., uN_M]
+where N = num_odes and M = ode_size.
+
+Parameters `p` should be a vector of per-ODE parameters (length == num_odes).
+"""
+function (lf::LockstepFunction)(du, u, p, t)
+    N = lf.num_odes
+    M = lf.ode_size
+
+    # Process each ODE in parallel
+    Threads.@threads for i in 1:N
+        # Calculate index range for this ODE
+        idx_start = (i - 1) * M + 1
+        idx_end = i * M
+
+        # Create views into the flat arrays
+        du_i = @view du[idx_start:idx_end]
+        u_i = @view u[idx_start:idx_end]
+
+        # Call the underlying ODE function
+        lf.f(du_i, u_i, p[i], t)
     end
 
-    # Warn if sync_interval set but no coupling
-    if sync_interval > 0 && coupling === nothing
-        @warn "sync_interval=$sync_interval specified but no coupling function provided"
-    end
-
-    return LockstepFunction{F, C}(
-        f,
-        Int(num_odes),
-        Int(ode_size),
-        Float64(sync_interval),
-        coupling,
-        indices,
-        callbacks
-    )
+    return nothing
 end
 
 """
     LockstepSolution{S}
 
-Combined solution from N synchronized ODEs.
+Combined solution from N independent ODEs.
 
 # Fields
 - `solutions::Vector{S}`: Individual ODESolutions (one per ODE)
-- `sync_times::Vector{Float64}`: Times where synchronization occurred
 - `retcode::ReturnCode.T`: Overall return code
 
 # Accessors
 - `sol[i]`: Get i-th ODE's solution
 - `length(sol)`: Number of ODEs
-- `sol.sync_times`: Synchronization time points
 """
 struct LockstepSolution{S}
     solutions::Vector{S}
-    sync_times::Vector{Float64}
     retcode::ReturnCode.T
 end

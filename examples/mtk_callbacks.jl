@@ -68,7 +68,8 @@ param_syms = parameters(lotka_volterra)
 p = [Float64(default_vals[ps]) for ps in param_syms]
 
 # Solve with explicit parameter vector (same for all ODEs)
-sol = LockstepODE.solve(lf, u0s, tspan, p, Tsit5())
+prob = LockstepProblem(lf, u0s, tspan, p)
+sol = solve(prob, Tsit5())
 
 # Display results
 println("\nParameters Used:")

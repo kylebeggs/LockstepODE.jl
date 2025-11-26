@@ -31,7 +31,8 @@
     u0s = [[1.0], [1.0]]
     ps = [1.0, 1.0]  # Same growth rate
 
-    sol = LockstepODE.solve(lf, u0s, (0.0, 5.0), ps, Tsit5())
+    prob = LockstepProblem(lf, u0s, (0.0, 5.0), ps)
+    sol = solve(prob, Tsit5())
 
     # Verify callbacks were hit (ODE 1 should reset more often)
     @test length(callback_hits[1]) > length(callback_hits[2])
@@ -60,7 +61,8 @@ end
     lf = LockstepFunction(decay!, 1, 3; callbacks=floor_cb)
     u0s = [[2.0], [1.0], [0.5]]
 
-    sol = LockstepODE.solve(lf, u0s, (0.0, 10.0), Tsit5())
+    prob = LockstepProblem(lf, u0s, (0.0, 10.0))
+    sol = solve(prob, Tsit5())
 
     # All should be floored at ~0.1
     for s in sol.solutions
@@ -87,7 +89,8 @@ end
     lf = LockstepFunction(falling_ball!, 2, 2; callbacks=bounce_cb)
     u0s = [[2.0, 0.0], [3.0, 0.0]]
 
-    sol = LockstepODE.solve(lf, u0s, (0.0, 3.0), Tsit5())
+    prob = LockstepProblem(lf, u0s, (0.0, 3.0))
+    sol = solve(prob, Tsit5())
 
     # Just verify solution exists
     @test length(sol) == 2
@@ -107,7 +110,8 @@ end
     lf = LockstepFunction(harmonic!, 2, 2)
 
     u0s = [[1.0, 0.0], [2.0, 0.0]]
-    sol = LockstepODE.solve(lf, u0s, (0.0, 1.0), Tsit5())
+    prob = LockstepProblem(lf, u0s, (0.0, 1.0))
+    sol = solve(prob, Tsit5())
 
     @test sol.retcode == ReturnCode.Success
     @test length(sol) == 2

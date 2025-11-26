@@ -14,7 +14,8 @@
     lf = LockstepFunction(decay_sys, 3)
 
     u0s = [[1.0], [2.0], [3.0]]
-    sol = LockstepODE.solve(lf, u0s, (0.0, 2.0), 0.5, Tsit5())  # α = 0.5
+    prob = LockstepProblem(lf, u0s, (0.0, 2.0), 0.5)  # α = 0.5
+    sol = solve(prob, Tsit5())
 
     @test sol isa LockstepSolution
     @test length(sol) == 3
@@ -45,7 +46,8 @@ end
     lf = LockstepFunction(oscillator, 3)
 
     u0s = [[1.0, 0.0], [2.0, 0.0], [0.5, 0.0]]
-    sol = LockstepODE.solve(lf, u0s, (0.0, 2π), 1.0, Tsit5(); abstol=1e-10, reltol=1e-10)  # ω = 1
+    prob = LockstepProblem(lf, u0s, (0.0, 2π), 1.0)  # ω = 1
+    sol = solve(prob, Tsit5(); abstol=1e-10, reltol=1e-10)
 
     # After one period, should return to initial
     for (i, s) in enumerate(sol.solutions)
@@ -72,7 +74,8 @@ end
     u0s = [[1.0], [1.0], [1.0]]
     ps = [0.1, 0.5, 1.0]  # Different growth rates
 
-    sol = LockstepODE.solve(lf, u0s, (0.0, 2.0), ps, Tsit5())
+    prob = LockstepProblem(lf, u0s, (0.0, 2.0), ps)
+    sol = solve(prob, Tsit5())
 
     for (i, s) in enumerate(sol.solutions)
         expected = exp(ps[i] * 2.0)
@@ -112,7 +115,8 @@ end
     u0s = [[1.0], [1.0], [1.0]]
     ps = [1.0, 1.0, 1.0]
 
-    sol = LockstepODE.solve(lf, u0s, (0.0, 10.0), ps, Tsit5())
+    prob = LockstepProblem(lf, u0s, (0.0, 10.0), ps)
+    sol = solve(prob, Tsit5())
 
     @test reset_count[] > 0
     for s in sol.solutions
@@ -120,39 +124,6 @@ end
     end
 end
 
-@testitem "MTK with coupling" begin
-    using LockstepODE
-    using OrdinaryDiffEq
-    using ModelingToolkit
-    using ModelingToolkit: t_nounits as t, D_nounits as D, mtkcompile
-    using Statistics
-
-    @parameters α
-    @variables x(t)
-
-    eqs = [D(x) ~ -α * x]
-    @named decay = ODESystem(eqs, t)
-    decay = mtkcompile(decay)
-
-    function couple!(states, t)
-        m = mean(s[1] for s in states)
-        for s in states
-            s[1] = m
-        end
-    end
-
-    lf = LockstepFunction(decay, 3;
-        sync_interval=0.1,
-        coupling=couple!
-    )
-
-    u0s = [[1.0], [2.0], [3.0]]
-    sol = LockstepODE.solve(lf, u0s, (0.0, 1.0), 0.5, Tsit5())
-
-    # Should synchronize
-    finals = [s.u[end][1] for s in sol.solutions]
-    @test maximum(finals) - minimum(finals) < 0.1
-end
 
 @testitem "MTK transform_parameters" begin
     using LockstepODE

@@ -1,0 +1,151 @@
+"""
+LockstepProblem type for CommonSolve.jl interface.
+
+Holds all data needed to construct N individual ODEProblems internally.
+"""
+
+"""
+    LockstepProblem{LF, U, T, P}
+
+Problem type for batched ODE solving with optional synchronization.
+
+# Fields
+- `lf::LF`: LockstepFunction coordinator
+- `u0s::Vector{U}`: Initial conditions (one per ODE, normalized)
+- `tspan::Tuple{T, T}`: Time span
+- `ps::Vector{P}`: Parameters (one per ODE, normalized)
+
+# Constructor
+```julia
+LockstepProblem(lf::LockstepFunction, u0s, tspan, p=nothing)
+```
+
+# Example
+```julia
+function lorenz!(du, u, p, t)
+    σ, ρ, β = p
+    du[1] = σ*(u[2]-u[1])
+    du[2] = u[1]*(ρ-u[3]) - u[2]
+    du[3] = u[1]*u[2] - β*u[3]
+end
+
+lf = LockstepFunction(lorenz!, 3, 10)
+u0s = [[1.0, 0.0, 0.0] for _ in 1:10]
+prob = LockstepProblem(lf, u0s, (0.0, 10.0), (10.0, 28.0, 8/3))
+sol = solve(prob, Tsit5())
+```
+"""
+struct LockstepProblem{LF, U, T, P}
+    lf::LF
+    u0s::Vector{U}
+    tspan::Tuple{T, T}
+    ps::Vector{P}
+
+    # Inner constructor that validates and normalizes inputs
+    function LockstepProblem(
+        lf::LockstepFunction{F, C},
+        u0s,
+        tspan::Tuple,
+        p = nothing
+    ) where {F, C}
+        u0s_normalized = _normalize_u0s(u0s, lf.num_odes, lf.ode_size)
+        ps_normalized = _normalize_params(p, lf.num_odes)
+
+        U = eltype(u0s_normalized)
+        T = promote_type(typeof(tspan[1]), typeof(tspan[2]))
+        P = eltype(ps_normalized)
+
+        return new{typeof(lf), U, T, P}(
+            lf,
+            u0s_normalized,
+            (T(tspan[1]), T(tspan[2])),
+            ps_normalized
+        )
+    end
+end
+
+# ============================================================================
+# Input normalization helpers (moved from solve.jl)
+# ============================================================================
+
+"""
+Normalize initial conditions to Vector of Vectors.
+"""
+function _normalize_u0s(u0s::AbstractVector{<:AbstractVector}, num_odes::Int, ode_size::Int)
+    length(u0s) == num_odes || throw(ArgumentError(
+        "Expected $num_odes initial conditions, got $(length(u0s))"
+    ))
+    for (i, u0) in enumerate(u0s)
+        length(u0) == ode_size || throw(ArgumentError(
+            "ODE $i: expected state size $ode_size, got $(length(u0))"
+        ))
+    end
+    return u0s
+end
+
+function _normalize_u0s(u0::AbstractVector{<:Number}, num_odes::Int, ode_size::Int)
+    # Single u0 - replicate for all ODEs
+    length(u0) == ode_size || throw(ArgumentError(
+        "Expected state size $ode_size, got $(length(u0))"
+    ))
+    return [copy(u0) for _ in 1:num_odes]
+end
+
+"""
+Normalize parameters to Vector.
+
+Parameter normalization rules:
+- `nothing` → `[nothing, nothing, ...]`
+- Scalar (e.g., `0.5`) → `[0.5, 0.5, ...]` (shared)
+- Vector of scalars with length == num_odes (e.g., `[0.1, 0.5, 1.0]`) → per-ODE scalar params
+- Vector of non-scalars (e.g., `[[1,2], [3,4]]`) with length == num_odes → per-ODE param sets
+- Tuple (e.g., `(1.0, 2.0)`) → `[(1.0, 2.0), (1.0, 2.0), ...]` (shared)
+"""
+function _normalize_params(p::Nothing, num_odes::Int)
+    return fill(nothing, num_odes)
+end
+
+function _normalize_params(p::AbstractVector{<:Number}, num_odes::Int)
+    if length(p) == num_odes
+        # Per-ODE scalar parameters: [0.5, 1.0, 2.0] → each ODE gets one value
+        return p
+    else
+        # Shared vector parameter: [1.0, 2.0] (not matching num_odes) → replicate
+        return fill(p, num_odes)
+    end
+end
+
+function _normalize_params(p::AbstractVector, num_odes::Int)
+    # Non-numeric element type (vectors, tuples, etc.)
+    if length(p) == num_odes
+        # Per-ODE parameter sets
+        return p
+    else
+        # Shared parameters
+        return fill(p, num_odes)
+    end
+end
+
+function _normalize_params(p, num_odes::Int)
+    # Scalar or tuple - shared across all ODEs
+    return fill(p, num_odes)
+end
+
+"""
+Normalize callbacks to Vector.
+"""
+function _normalize_callbacks(callbacks::Nothing, num_odes::Int)
+    return fill(nothing, num_odes)
+end
+
+function _normalize_callbacks(callbacks::AbstractVector, num_odes::Int)
+    length(callbacks) == num_odes || throw(ArgumentError(
+        "Expected $num_odes callbacks, got $(length(callbacks))"
+    ))
+    return callbacks
+end
+
+function _normalize_callbacks(callback, num_odes::Int)
+    # Single callback - share across all ODEs
+    return fill(callback, num_odes)
+end

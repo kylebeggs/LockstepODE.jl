@@ -26,9 +26,6 @@ work natively without special wrappers.
 - `num_odes::Int`: Number of parallel ODE instances to solve
 
 # Keyword Arguments
-- `sync_interval::Real=0.0`: Time between sync points (0 = no sync)
-- `coupling::Function=nothing`: In-place coupling function `coupling!(states, t)`
-- `coupling_indices::Vector{Int}=nothing`: Which indices to couple
 - `callbacks=nothing`: Per-ODE callbacks (single or Vector)
 
 # Example
@@ -47,8 +44,7 @@ eqs = [
 
 @named lorenz = ODESystem(eqs, t)
 
-# Create LockstepFunction - no special wrapper needed!
-lf = LockstepFunction(lorenz, 10; sync_interval=0.1)
+lf = LockstepFunction(lorenz, 10)
 
 # Use standard MTK accessors in callbacks
 get_x = getu(lorenz, x)
@@ -63,9 +59,6 @@ lf_with_cb = LockstepFunction(lorenz, 10; callbacks=cb)
 function LockstepFunction(
         sys::ODESystem,
         num_odes::Integer;
-        sync_interval::Real = 0.0,
-        coupling::Union{Nothing, Function} = nothing,
-        coupling_indices::Union{Nothing, AbstractVector{<:Integer}} = nothing,
         callbacks = nothing
 )
     # Get the compiled ODE function
@@ -76,15 +69,7 @@ function LockstepFunction(
     ode_size = length(unknowns(sys))
 
     # Create LockstepFunction with the compiled MTK function
-    return LockstepFunction(
-        f,
-        ode_size,
-        num_odes;
-        sync_interval = sync_interval,
-        coupling = coupling,
-        coupling_indices = coupling_indices,
-        callbacks = callbacks
-    )
+    return LockstepFunction(f, ode_size, num_odes; callbacks = callbacks)
 end
 
 """
