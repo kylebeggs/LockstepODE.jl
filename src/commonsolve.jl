@@ -1,28 +1,29 @@
 """
 CommonSolve.jl interface implementations for LockstepODE.
 
-Provides __init, __solve, and solve! methods that integrate with the SciML ecosystem.
+Provides init, solve, and solve! methods that integrate with the SciML ecosystem.
+Dispatches on mode: LockstepProblem{Ensemble} or LockstepProblem{Batched}.
 """
 
-using OrdinaryDiffEq: ODEProblem, ODESolution
-using OrdinaryDiffEq: init as ode_init, solve as ode_solve
+using OrdinaryDiffEq: ODEProblem, ODESolution, CallbackSet
+using OrdinaryDiffEq: init as ode_init, solve as ode_solve, solve! as ode_solve!
 using SciMLBase: ReturnCode
 import CommonSolve: solve!, init, solve
 
-# ============================================================================
-# init (via SciMLBase.__init)
-# ============================================================================
+#==============================================================================#
+# Ensemble Mode: init
+#==============================================================================#
 
 """
-    init(prob::LockstepProblem, alg; kwargs...)
+    init(prob::LockstepProblem{Ensemble}, alg; kwargs...)
 
-Initialize a LockstepIntegrator for the given problem and algorithm.
+Initialize an EnsembleLockstepIntegrator for Ensemble mode.
 
-Returns a `LockstepIntegrator` that can be stepped manually or solved to completion.
+Creates N independent ODE integrators that can be stepped manually or solved to completion.
 
 # Example
 ```julia
-prob = LockstepProblem(lf, u0s, (0.0, 10.0), p)
+prob = LockstepProblem(lf, u0s, (0.0, 10.0), p)  # Default Ensemble mode
 integ = init(prob, Tsit5())
 step!(integ)
 step!(integ, 0.1, true)
@@ -30,11 +31,11 @@ sol = solve!(integ)
 ```
 """
 function CommonSolve.init(
-    prob::LockstepProblem{LF, U, T, P},
+    prob::LockstepProblem{Ensemble, LF, U, T, P, Opts},
     alg::A;
     save_everystep::Bool = true,
     kwargs...
-) where {LF, U, T, P, A}
+) where {LF, U, T, P, Opts, A}
     lf = prob.lf
 
     # Create N individual ODEProblems
@@ -47,12 +48,10 @@ function CommonSolve.init(
     end
 
     # Keep as Vector{Any} to handle heterogeneous callback types
-    # Each integrator may have different type due to unique callback closures
     I = Any
-
     t0, tf = prob.tspan
 
-    return LockstepIntegrator{A, I, LF, T}(
+    return EnsembleLockstepIntegrator{A, I, LF, T}(
         integrators,
         lf,
         alg,
@@ -63,14 +62,14 @@ function CommonSolve.init(
     )
 end
 
-# ============================================================================
-# solve (via SciMLBase.__solve)
-# ============================================================================
+#==============================================================================#
+# Ensemble Mode: solve
+#==============================================================================#
 
 """
-    solve(prob::LockstepProblem, alg; kwargs...)
+    solve(prob::LockstepProblem{Ensemble}, alg; kwargs...)
 
-Solve the lockstep problem to completion.
+Solve the Ensemble mode problem to completion.
 
 # Example
 ```julia
@@ -79,7 +78,7 @@ sol = solve(prob, Tsit5())
 ```
 """
 function CommonSolve.solve(
-    prob::LockstepProblem,
+    prob::LockstepProblem{Ensemble},
     alg;
     kwargs...
 )::LockstepSolution
@@ -87,16 +86,16 @@ function CommonSolve.solve(
     return solve!(integ)
 end
 
-# ============================================================================
-# solve!
-# ============================================================================
+#==============================================================================#
+# Ensemble Mode: solve!
+#==============================================================================#
 
 """
-    solve!(integ::LockstepIntegrator)
+    solve!(integ::EnsembleLockstepIntegrator)
 
-Solve the integrator to completion and return the solution.
+Solve the Ensemble integrator to completion.
 
-Solves all ODEs in parallel independently.
+Solves all N ODE integrators in parallel independently.
 
 # Example
 ```julia
@@ -105,20 +104,17 @@ step!(integ)  # Optional manual stepping
 sol = solve!(integ)  # Complete the solve
 ```
 """
-function CommonSolve.solve!(integ::LockstepIntegrator)::LockstepSolution
+function CommonSolve.solve!(integ::EnsembleLockstepIntegrator)::LockstepSolution
     # Solve all integrators to completion in parallel
     Threads.@threads for i in eachindex(integ.integrators)
         ode_solve!(integ.integrators[i])
     end
     integ.t = integ.tspan[2]
 
-    return _finalize_solution(integ)
+    return _finalize_ensemble_solution(integ)
 end
 
-"""
-Build final LockstepSolution from integrator state.
-"""
-function _finalize_solution(integ::LockstepIntegrator)::LockstepSolution
+function _finalize_ensemble_solution(integ::EnsembleLockstepIntegrator)::LockstepSolution
     solutions = [sub.sol for sub in integ.integrators]
 
     retcode = ReturnCode.Success
@@ -132,13 +128,125 @@ function _finalize_solution(integ::LockstepIntegrator)::LockstepSolution
     return LockstepSolution(solutions, retcode)
 end
 
-# ============================================================================
-# Helper: create individual ODEProblems
-# ============================================================================
+#==============================================================================#
+# Batched Mode: init
+#==============================================================================#
 
 """
-Create N individual ODEProblems.
+    init(prob::LockstepProblem{Batched}, alg; kwargs...)
+
+Initialize a BatchedLockstepIntegrator for Batched mode.
+
+Creates a single ODE integrator with batched state vector. RHS evaluation
+is parallelized across ODEs. Supports GPU arrays.
+
+# Example
+```julia
+prob = LockstepProblem{Batched}(lf, u0s, (0.0, 10.0), p)
+integ = init(prob, Tsit5())
+step!(integ)
+sol = solve!(integ)
+```
 """
+function CommonSolve.init(
+    prob::LockstepProblem{Batched, LF, U, T, P, Opts},
+    alg;
+    save_everystep::Bool = true,
+    kwargs...
+) where {LF, U, T, P, Opts}
+    lf = prob.lf
+    opts = prob.opts
+
+    # Create BatchedFunction for RHS evaluation
+    bf = BatchedFunction(lf, opts)
+
+    # Batch initial conditions with correct ordering
+    u0_batched = batch_u0s(prob.u0s, opts.ordering)
+
+    # Create and wrap callbacks
+    cb = create_lockstep_callbacks(bf)
+
+    # Merge with any user-provided callback
+    user_cb = get(kwargs, :callback, nothing)
+    merged_cb = if !isnothing(cb) && !isnothing(user_cb)
+        CallbackSet(cb, user_cb)
+    elseif !isnothing(cb)
+        cb
+    else
+        user_cb
+    end
+
+    # Create single batched ODEProblem
+    ode_prob = ODEProblem(bf, u0_batched, prob.tspan, prob.ps; callback=merged_cb)
+
+    # Initialize the underlying integrator
+    raw_integ = ode_init(ode_prob, alg; save_everystep, kwargs...)
+
+    return BatchedLockstepIntegrator(raw_integ, lf, bf, opts)
+end
+
+#==============================================================================#
+# Batched Mode: solve
+#==============================================================================#
+
+"""
+    solve(prob::LockstepProblem{Batched}, alg; kwargs...)
+
+Solve the Batched mode problem to completion.
+
+# Example
+```julia
+prob = LockstepProblem{Batched}(lf, u0s, (0.0, 10.0), p)
+sol = solve(prob, Tsit5())
+```
+"""
+function CommonSolve.solve(
+    prob::LockstepProblem{Batched},
+    alg;
+    kwargs...
+)::LockstepSolution
+    integ = init(prob, alg; kwargs...)
+    return solve!(integ)
+end
+
+#==============================================================================#
+# Batched Mode: solve!
+#==============================================================================#
+
+"""
+    solve!(integ::BatchedLockstepIntegrator)
+
+Solve the Batched integrator to completion.
+
+# Example
+```julia
+integ = init(prob, Tsit5())
+step!(integ)  # Optional manual stepping
+sol = solve!(integ)  # Complete the solve
+```
+"""
+function CommonSolve.solve!(integ::BatchedLockstepIntegrator)::LockstepSolution
+    # Solve the underlying integrator
+    ode_solve!(integ.integrator)
+
+    return _finalize_batched_solution(integ)
+end
+
+function _finalize_batched_solution(integ::BatchedLockstepIntegrator)::LockstepSolution
+    raw_sol = integ.integrator.sol
+    bf = integ.bf
+    lf = integ.lf
+
+    # Extract individual solutions as BatchedSubSolution wrappers
+    solutions = [BatchedSubSolution(raw_sol, bf, i) for i in 1:lf.num_odes]
+
+    return LockstepSolution(solutions, raw_sol.retcode)
+end
+
+#==============================================================================#
+# Helper: create individual ODEProblems (Ensemble mode only)
+#==============================================================================#
+
 function _create_individual_problems(
     lf::LockstepFunction,
     u0s::Vector,
@@ -162,6 +270,3 @@ function _create_individual_problems(
 
     return problems
 end
-
-# Import solve! from OrdinaryDiffEq for internal use
-using OrdinaryDiffEq: solve! as ode_solve!
