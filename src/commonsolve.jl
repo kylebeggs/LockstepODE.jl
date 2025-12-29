@@ -41,14 +41,18 @@ function CommonSolve.init(
     # Create N individual ODEProblems
     problems = _create_individual_problems(lf, prob.u0s, prob.tspan, prob.ps)
 
-    # Initialize N integrators in parallel
-    integrators = Vector{Any}(undef, lf.num_odes)
-    Threads.@threads for i in 1:lf.num_odes
+    # Initialize first integrator to infer concrete type (avoids Vector{Any})
+    first_integ = ode_init(problems[1], alg; save_everystep, kwargs...)
+    I = typeof(first_integ)
+
+    integrators = Vector{I}(undef, lf.num_odes)
+    integrators[1] = first_integ
+
+    # Initialize remaining integrators in parallel
+    Threads.@threads for i in 2:lf.num_odes
         integrators[i] = ode_init(problems[i], alg; save_everystep, kwargs...)
     end
 
-    # Keep as Vector{Any} to handle heterogeneous callback types
-    I = Any
     t0, tf = prob.tspan
 
     return EnsembleLockstepIntegrator{A, I, LF, T}(

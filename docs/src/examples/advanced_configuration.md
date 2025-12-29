@@ -1,14 +1,65 @@
 # Advanced Configuration
 
-This page covers performance optimization and advanced configuration options in LockstepODE.jl, including memory layout selection and threading control.
+This page covers performance optimization and advanced configuration options in LockstepODE.jl v2.0, including memory layout selection, threading control, and mode selection.
 
-## Memory Layouts
+## Execution Modes
 
-LockstepODE supports two memory layouts for organizing batched ODE data: `PerODE` and `PerIndex`. The choice of layout can affect cache performance and access patterns.
+LockstepODE v2.0 provides two execution modes with different performance characteristics:
+
+### Ensemble Mode (Default)
+
+N independent ODE integrators, each with adaptive timestepping:
+
+```julia
+prob = LockstepProblem(lf, u0s, tspan, ps)
+# or explicitly:
+prob = LockstepProblem{Ensemble}(lf, u0s, tspan, ps)
+```
+
+**Characteristics:**
+- Per-ODE adaptive timestepping
+- Full integrator access per ODE
+- Standard OrdinaryDiffEq callbacks
+- Best for ModelingToolkit integration
+
+**When to use:**
+- Per-ODE introspection needed during integration
+- Complex per-ODE callbacks
+- ODEs with very different dynamics/stiffness
+- Moderate N (< 100 ODEs)
+
+### Batched Mode
+
+Single integrator with batched state vector and parallel RHS evaluation:
+
+```julia
+prob = LockstepProblem{Batched}(lf, u0s, tspan, ps;
+    ordering = PerODE(),        # Memory layout
+    internal_threading = true   # CPU threading
+)
+```
+
+**Characteristics:**
+- Single timestepping for all ODEs
+- Parallel RHS evaluation
+- GPU acceleration support
+- Maximum throughput
+
+**When to use:**
+- Large N (100+ ODEs)
+- GPU acceleration desired
+- All ODEs have similar dynamics
+- Per-ODE control not needed during solve
+
+---
+
+## Memory Layouts (Batched Mode)
+
+Batched mode supports two memory layouts for organizing batched ODE data.
 
 ### Memory Layout Comparison
 
-For a system with 3 ODEs, each with 2 variables ($u_1$, $u_2$), the layouts differ:
+For a system with 3 ODEs, each with 2 variables (u1, u2):
 
 **PerODE (default)**: Variables for each ODE stored contiguously
 ```
@@ -32,7 +83,7 @@ For a system with 3 ODEs, each with 2 variables ($u_1$, $u_2$), the layouts diff
 - Useful when vectorizing operations across ODEs
 - Potentially better SIMD opportunities
 
-### Using PerIndex Layout
+### Using Different Layouts
 
 ```julia
 using LockstepODE
@@ -43,48 +94,35 @@ function my_ode!(du, u, p, t)
     du[2] = -u[1]
 end
 
-num_odes = 4
-u0_vec = [[1.0, 0.0], [2.0, 1.0], [0.5, -0.5], [1.5, 0.8]]
-u0_batched = vcat(u0_vec...)
-p_batched = [1.0, 1.2, 0.8, 1.1]
+lf = LockstepFunction(my_ode!, 2, 4)
 
-# Use PerIndex layout
-lockstep_func_per_index = LockstepFunction(
-    my_ode!,
-    2,  # 2 variables per ODE
-    num_odes;
+u0s = [[1.0, 0.0], [2.0, 1.0], [0.5, -0.5], [1.5, 0.8]]
+ps = [1.0, 1.2, 0.8, 1.1]
+
+# PerODE layout (default)
+prob_per_ode = LockstepProblem{Batched}(lf, u0s, (0.0, 10.0), ps;
+    ordering = PerODE()
+)
+
+# PerIndex layout
+prob_per_index = LockstepProblem{Batched}(lf, u0s, (0.0, 10.0), ps;
     ordering = PerIndex()
 )
 
-prob_per_index = ODEProblem(lockstep_func_per_index, u0_batched, (0.0, 10.0), p_batched)
-sol_per_index = solve(prob_per_index, Tsit5())
-
-# Extract solutions works the same way
-individual_sols = extract_solutions(lockstep_func_per_index, sol_per_index)
+sol = solve(prob_per_ode, Tsit5())
 ```
-
-### Discussion
-
-The memory layout is primarily an implementation detail that affects performance but not correctness. Key points:
-
-1. **Transparent to users**: The same ODE function works with both layouts
-2. **Dispatch-based**: LockstepODE uses Julia's type system to dispatch to the correct indexing
-3. **Benchmark both**: For performance-critical applications, test both layouts
-4. **System-dependent**: Optimal layout depends on problem size, hardware, and ODE complexity
 
 ### Performance Considerations
 
 ```julia
 using BenchmarkTools
 
-function benchmark_layouts(ode_func, ode_size, num_odes, u0, p, tspan)
+function benchmark_layouts(lf, u0s, tspan, ps)
     # PerODE layout
-    lockstep_per_ode = LockstepFunction(ode_func, ode_size, num_odes, ordering=PerODE())
-    prob_per_ode = ODEProblem(lockstep_per_ode, u0, tspan, p)
+    prob_per_ode = LockstepProblem{Batched}(lf, u0s, tspan, ps; ordering=PerODE())
 
     # PerIndex layout
-    lockstep_per_index = LockstepFunction(ode_func, ode_size, num_odes, ordering=PerIndex())
-    prob_per_index = ODEProblem(lockstep_per_index, u0, tspan, p)
+    prob_per_index = LockstepProblem{Batched}(lf, u0s, tspan, ps; ordering=PerIndex())
 
     println("PerODE layout:")
     @btime solve($prob_per_ode, Tsit5())
@@ -95,7 +133,7 @@ end
 ```
 
 **Typical observations**:
-- For small ODE systems (ode_size ≤ 10): Both layouts perform similarly
+- For small ODE systems (ode_size <= 10): Both layouts perform similarly
 - For large ODE systems (ode_size > 100): PerODE usually faster
 - For many small ODEs with simple dynamics: PerIndex may be faster
 
@@ -103,46 +141,150 @@ end
 
 ## Threading Control
 
-LockstepODE uses multi-threading on CPU (via `OhMyThreads.jl`) or GPU kernels (via KernelAbstractions.jl) to parallelize execution across different ODEs. The `internal_threading` parameter controls CPU-only behavior; GPU arrays automatically dispatch to appropriate kernels.
+### Ensemble Mode Threading
 
-### Default Behavior (Threading Enabled)
-
-By default, `internal_threading=true` on CPU, and LockstepODE uses `OhMyThreads.jl` to execute ODEs in parallel. With GPU arrays, the appropriate KernelAbstractions.jl backend is automatically selected:
+Ensemble mode uses `Threads.@threads` to parallelize integrator creation and stepping:
 
 ```julia
-# Default: threading enabled
-lockstep_func = LockstepFunction(my_ode!, 2, 10)  # Solves 10 ODEs in parallel
+# Threading is automatic based on Julia thread count
+prob = LockstepProblem(lf, u0s, tspan, ps)  # Uses available threads
 ```
 
-Each ODE system runs on a potentially different thread, allowing efficient use of multi-core processors.
+Control with Julia's thread count:
+```bash
+JULIA_NUM_THREADS=8 julia
+```
 
-### Disabling Internal Threading
+### Batched Mode Threading
 
-You may want to disable internal threading if:
+Batched mode uses `OhMyThreads.jl` for parallel RHS evaluation:
+
+```julia
+# Enable threading (default)
+prob = LockstepProblem{Batched}(lf, u0s, tspan, ps; internal_threading=true)
+
+# Disable threading
+prob = LockstepProblem{Batched}(lf, u0s, tspan, ps; internal_threading=false)
+```
+
+### When to Disable Threading
+
+Disable internal threading when:
 - You're already parallelizing at a higher level
-- You're running in a single-threaded environment
-- You want deterministic behavior for debugging
+- Running in a single-threaded environment
+- Want deterministic behavior for debugging
 
 ```julia
-# Disable internal threading
-lockstep_func_no_threading = LockstepFunction(
-    my_ode!,
-    2,  # 2 variables per ODE
-    num_odes;
-    internal_threading = false
-)
+using Distributed
+@everywhere using LockstepODE, OrdinaryDiffEq
 
-prob_no_threading = ODEProblem(lockstep_func_no_threading, u0_batched, (0.0, 10.0), p_batched)
-sol_no_threading = solve(prob_no_threading, Tsit5())
+# External parallelization with internal threading disabled
+@everywhere function solve_variant(param)
+    lf = LockstepFunction(my_ode!, 2, 10)
+    u0s = [[1.0, 0.0] for _ in 1:10]
+    prob = LockstepProblem{Batched}(lf, u0s, (0.0, 10.0), param;
+        internal_threading = false  # Avoid over-subscription
+    )
+    return solve(prob, Tsit5())
+end
+
+params = [0.8, 0.9, 1.0, 1.1, 1.2]
+results = pmap(solve_variant, params)
 ```
 
-With `internal_threading=false`, ODEs are executed sequentially in a simple loop.
+---
 
-### Threading Considerations
+## GPU Acceleration
 
-#### Thread Safety
+GPU acceleration is available in Batched mode:
 
-When `internal_threading=true`, your ODE function should be thread-safe:
+```julia
+using LockstepODE
+using CUDA  # Or: AMDGPU, Metal, oneAPI
+
+function my_ode!(du, u, p, t)
+    du[1] = p * u[2]
+    du[2] = -u[1]
+end
+
+lf = LockstepFunction(my_ode!, 2, 1000)
+
+# Create GPU initial conditions
+u0s_gpu = [CuArray([1.0, 0.0]) for _ in 1:1000]
+ps_gpu = CuArray(ones(1000))
+
+# Use Batched mode (required for GPU)
+prob = LockstepProblem{Batched}(lf, u0s_gpu, (0.0, 10.0), ps_gpu)
+sol = solve(prob, Tsit5())
+```
+
+### Supported Backends
+
+| Package | GPU Type | Array Type |
+|---------|----------|------------|
+| CUDA.jl | NVIDIA | `CuArray` |
+| AMDGPU.jl | AMD | `ROCArray` |
+| Metal.jl | Apple Silicon | `MtlArray` |
+| oneAPI.jl | Intel | `oneArray` |
+
+Backend selection is automatic based on array type.
+
+---
+
+## Performance Tuning
+
+### Choosing a Mode
+
+```julia
+# Small N, per-ODE control needed: Ensemble
+if num_odes < 50 || need_per_ode_callbacks
+    prob = LockstepProblem(lf, u0s, tspan, ps)
+
+# Large N, GPU, or maximum throughput: Batched
+else
+    prob = LockstepProblem{Batched}(lf, u0s, tspan, ps)
+end
+```
+
+### Benchmarking Configurations
+
+```julia
+using BenchmarkTools
+
+function benchmark_modes(lf, u0s, tspan, ps)
+    # Ensemble mode
+    prob_ensemble = LockstepProblem(lf, u0s, tspan, ps)
+
+    # Batched modes
+    prob_batched_perode = LockstepProblem{Batched}(lf, u0s, tspan, ps;
+        ordering=PerODE(), internal_threading=true)
+    prob_batched_perindex = LockstepProblem{Batched}(lf, u0s, tspan, ps;
+        ordering=PerIndex(), internal_threading=true)
+
+    println("Ensemble mode:")
+    @btime solve($prob_ensemble, Tsit5())
+
+    println("\nBatched (PerODE + Threading):")
+    @btime solve($prob_batched_perode, Tsit5())
+
+    println("\nBatched (PerIndex + Threading):")
+    @btime solve($prob_batched_perindex, Tsit5())
+end
+```
+
+### General Performance Tips
+
+1. **Mode selection**: Ensemble for control, Batched for throughput
+2. **Threading**: Keep enabled unless nested parallelism
+3. **Layout**: Start with PerODE, benchmark PerIndex for specific workloads
+4. **GPU**: Use Batched mode with GPU arrays for N > 100
+5. **Type stability**: Ensure ODE function is type-stable (`@code_warntype`)
+
+---
+
+## Thread Safety
+
+When using threading (Ensemble mode or Batched with `internal_threading=true`), ensure your ODE function is thread-safe:
 
 ```julia
 # Thread-safe: Only modifies local arrays (du, u)
@@ -173,114 +315,32 @@ function thread_safe_counting_ode!(du, u, p, t)
 end
 ```
 
-#### Controlling Julia Threads
-
-LockstepODE uses Julia's threading, controlled by the `JULIA_NUM_THREADS` environment variable:
-
-```bash
-# Launch Julia with 8 threads
-JULIA_NUM_THREADS=8 julia
-```
-
-Or from within Julia (before loading packages):
-
-```julia
-# Check number of threads
-Threads.nthreads()  # Returns: 8 (if launched with 8 threads)
-```
-
-### External Parallelization
-
-For nested CPU parallelism (e.g., parallel solves with LockstepODE inside each), disable internal threading. Note: GPU execution automatically handles batching without this consideration:
-
-```julia
-using Distributed
-@everywhere using LockstepODE, OrdinaryDiffEq
-
-# Create lockstep function without internal threading
-@everywhere function setup_problem(param)
-    lockstep_func = LockstepFunction(my_ode!, 2, 10, internal_threading=false)
-    prob = ODEProblem(lockstep_func, u0, (0.0, 10.0), param)
-    return prob
-end
-
-# Parallelize across parameter values
-params = [0.8, 0.9, 1.0, 1.1, 1.2]
-results = pmap(params) do p
-    prob = setup_problem(p)
-    solve(prob, Tsit5())
-end
-```
-
-This avoids over-subscription where threads compete for resources.
-
----
-
-## Performance Tuning
-
-### Benchmarking Your Configuration
-
-For performance-critical applications, benchmark different configurations:
-
-```julia
-using BenchmarkTools
-
-function benchmark_configs(ode_func, ode_size, num_odes)
-    u0 = ones(ode_size * num_odes)
-    p = ones(num_odes)
-    tspan = (0.0, 10.0)
-
-    configs = [
-        ("PerODE + Threading", PerODE(), true),
-        ("PerODE + No Threading", PerODE(), false),
-        ("PerIndex + Threading", PerIndex(), true),
-        ("PerIndex + No Threading", PerIndex(), false)
-    ]
-
-    for (name, ordering, threading) in configs
-        lockstep_func = LockstepFunction(
-            ode_func, ode_size, num_odes,
-            ordering=ordering, internal_threading=threading
-        )
-        prob = ODEProblem(lockstep_func, u0, tspan, p)
-
-        println("\n$name:")
-        @btime solve($prob, Tsit5())
-    end
-end
-```
-
-### General Performance Tips
-
-1. **Use threading on CPU**: Keep `internal_threading=true` when solving many (>4) ODEs on CPU. For GPU execution, this parameter is ignored and KernelAbstractions.jl handles parallelization
-2. **Type stability**: Ensure your ODE function is type-stable (check with `@code_warntype`)
-3. **Start with PerODE**: Use default `PerODE` layout unless benchmarks show otherwise
-4. **Appropriate solver**: Choose ODE solver based on problem stiffness
-5. **Batch size**: Performance benefits increase with more ODEs (diminishing returns after ~100)
-
-### Hardware Considerations
-
-**Multi-core processors**: Threading provides significant speedup (near-linear for independent ODEs)
-
-**NUMA systems**: Memory layout may matter more on Non-Uniform Memory Access systems
-
-**SIMD**: PerIndex layout may enable better vectorization for simple operations
-
 ---
 
 ## Summary
 
-Key configuration options:
+### Configuration Options
 
-| Option | Values | Default | Use Case |
-|--------|--------|---------|----------|
-| `ordering` | `PerODE()`, `PerIndex()` | `PerODE()` | Memory layout optimization |
-| `internal_threading` | `true`, `false` | `true` | Control CPU parallelization (GPU uses KernelAbstractions.jl) |
+| Mode | Option | Values | Default | Description |
+|------|--------|--------|---------|-------------|
+| Batched | `ordering` | `PerODE()`, `PerIndex()` | `PerODE()` | Memory layout |
+| Batched | `internal_threading` | `true`, `false` | `true` | CPU threading for RHS |
 
-**Recommended workflow**:
-1. Start with defaults (`PerODE`, `internal_threading=true`)
-2. If performance is critical, benchmark both layouts
-3. Disable threading only for nested parallelism or debugging
-4. Use Julia's profiling tools (`@profile`, ProfileView.jl) for detailed analysis
+### Mode Comparison
 
-For basic usage patterns, see [Basic Usage](@ref). For event handling, see [Callbacks](callbacks.md).
+| Feature | Ensemble | Batched |
+|---------|----------|---------|
+| Integrators | N independent | 1 batched |
+| Timestepping | Per-ODE adaptive | Shared |
+| GPU support | No | Yes |
+| Per-ODE control | Full | Limited |
+| Best for N | < 100 | > 100 |
+
+### Recommended Workflow
+
+1. Start with Ensemble mode (default)
+2. If performance is critical and N > 100, try Batched mode
+3. For GPU, use Batched mode with GPU arrays
+4. Benchmark different configurations for your specific workload
+
+For basic usage patterns, see [Basic Usage](basic_usage.md). For event handling, see [Callbacks](callbacks.md).

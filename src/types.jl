@@ -179,43 +179,6 @@ end
 
 @inline _get_ode_parameters(p, ::Int, ::Int) = p
 
-#==============================================================================#
-# LockstepFunction Callable Interface
-#==============================================================================#
-
-"""
-    (lf::LockstepFunction)(du, u, p, t)
-
-Callable interface for use with ODEProblem. Operates on flat interleaved state vector.
-
-State layout: [u1_1, u1_2, ..., u1_M, u2_1, u2_2, ..., u2_M, ..., uN_1, ..., uN_M]
-where N = num_odes and M = ode_size.
-
-Parameters `p` should be a vector of per-ODE parameters (length == num_odes),
-or a single value/nothing to share across all ODEs.
-"""
-function (lf::LockstepFunction)(du, u, p, t)
-    N = lf.num_odes
-    M = lf.ode_size
-
-    # Process each ODE in parallel
-    Threads.@threads for i in 1:N
-        # Calculate index range for this ODE
-        idx_start = (i - 1) * M + 1
-        idx_end = i * M
-
-        # Create views into the flat arrays
-        du_i = @view du[idx_start:idx_end]
-        u_i = @view u[idx_start:idx_end]
-
-        # Call the underlying ODE function with per-ODE parameters
-        p_i = _get_ode_parameters(p, i, N)
-        lf.f(du_i, u_i, p_i, t)
-    end
-
-    return nothing
-end
-
 """
     LockstepSolution{S}
 

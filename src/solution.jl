@@ -17,18 +17,25 @@ Wrapper providing per-ODE solution access with interpolation for Batched mode.
 When `sol = solve(prob, alg)` is called in Batched mode, `sol[i]` returns a
 `BatchedSubSolution` that provides:
 - `sol[i](t)`: Interpolate state at time `t`
-- `sol[i].u`: Time series of states (lazy extraction)
+- `sol[i].u`: Time series of states (cached on first access)
 - `sol[i].t`: Time points
 
 # Fields
 - `parent::S`: The full batched ODESolution
 - `bf::BF`: BatchedFunction for index calculations
 - `ode_idx::Int`: Which ODE this represents
+- `_u_cache::Vector`: Cached time series (populated on first .u access)
 """
-struct BatchedSubSolution{S, BF}
+mutable struct BatchedSubSolution{S, BF, U}
     parent::S
     bf::BF
     ode_idx::Int
+    _u_cache::Union{Nothing, Vector{U}}
+end
+
+function BatchedSubSolution(parent::S, bf::BF, ode_idx::Int) where {S, BF}
+    U = Vector{eltype(eltype(parent.u))}
+    return BatchedSubSolution{S, BF, U}(parent, bf, ode_idx, nothing)
 end
 
 # Interpolation: sol(t) returns state at time t
@@ -39,18 +46,23 @@ end
 
 # Property accessors
 function Base.getproperty(sol::BatchedSubSolution, sym::Symbol)
-    if sym === :parent || sym === :bf || sym === :ode_idx
+    if sym === :parent || sym === :bf || sym === :ode_idx || sym === :_u_cache
         return getfield(sol, sym)
     elseif sym === :t
         # Return time points from parent solution
         return getfield(sol, :parent).t
     elseif sym === :u
-        # Extract time series for this ODE
-        parent = getfield(sol, :parent)
-        bf = getfield(sol, :bf)
-        idx = getfield(sol, :ode_idx)
-        idxs = _get_idxs(bf, idx)
-        return [Array(u[idxs]) for u in parent.u]
+        # Extract time series for this ODE with lazy caching
+        cache = getfield(sol, :_u_cache)
+        if cache === nothing
+            parent = getfield(sol, :parent)
+            bf = getfield(sol, :bf)
+            idx = getfield(sol, :ode_idx)
+            idxs = _get_idxs(bf, idx)
+            cache = [Array(u[idxs]) for u in parent.u]
+            setfield!(sol, :_u_cache, cache)
+        end
+        return cache
     elseif sym === :retcode
         return getfield(sol, :parent).retcode
     else

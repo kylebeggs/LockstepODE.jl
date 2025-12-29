@@ -98,10 +98,28 @@ function Base.getproperty(integ::EnsembleLockstepIntegrator, sym::Symbol)
     elseif sym === :p
         return [sub.p for sub in getfield(integ, :integrators)]
     elseif sym === :dt
-        return minimum(sub.dt for sub in getfield(integ, :integrators))
+        return _compute_minimum_dt(getfield(integ, :integrators))
     else
         return getfield(integ, sym)
     end
+end
+
+@inline function _compute_minimum_dt(integrators)
+    dt_min = integrators[1].dt
+    @inbounds for i in 2:length(integrators)
+        dt_i = integrators[i].dt
+        dt_min = ifelse(dt_i < dt_min, dt_i, dt_min)
+    end
+    return dt_min
+end
+
+@inline function _compute_minimum_t(integrators)
+    t_min = integrators[1].t
+    @inbounds for i in 2:length(integrators)
+        t_i = integrators[i].t
+        t_min = ifelse(t_i < t_min, t_i, t_min)
+    end
+    return t_min
 end
 
 function Base.propertynames(::EnsembleLockstepIntegrator)
@@ -188,7 +206,7 @@ function step!(integ::EnsembleLockstepIntegrator)
     end
 
     # Update lockstep time to minimum across all integrators
-    integ.t = minimum(sub.t for sub in integ.integrators)
+    integ.t = _compute_minimum_t(integ.integrators)
 
     # Check for failures
     _update_retcode!(integ)
@@ -210,17 +228,22 @@ function step!(integ::EnsembleLockstepIntegrator, dt, stop_at_tdt::Bool = false)
         sciml_step!(integ.integrators[i], dt, stop_at_tdt)
     end
 
-    integ.t = minimum(sub.t for sub in integ.integrators)
+    integ.t = _compute_minimum_t(integ.integrators)
     _update_retcode!(integ)
 
     return nothing
 end
 
 function _update_retcode!(integ::EnsembleLockstepIntegrator)
+    # Check all integrators for failures (don't stop at first)
+    # The first failure found becomes the "official" retcode
     for sub in integ.integrators
-        if sub.sol.retcode != ReturnCode.Default && sub.sol.retcode != ReturnCode.Success
-            integ.retcode = sub.sol.retcode
-            return
+        retcode = sub.sol.retcode
+        if retcode != ReturnCode.Default && retcode != ReturnCode.Success
+            if integ.retcode == ReturnCode.Default
+                integ.retcode = retcode
+            end
+            # Continue checking all integrators instead of returning early
         end
     end
 end

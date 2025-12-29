@@ -1,38 +1,24 @@
 # Callbacks
 
-One of the powerful features of LockstepODE.jl is the ability to specify different callbacks for each ODE in your batched system. This is particularly useful when you want different behavior or conditions to trigger for different ODE instances while still benefiting from efficient parallel solving.
+One of the powerful features of LockstepODE.jl is the ability to specify different callbacks for each ODE in your system. This is particularly useful when you want different behavior or conditions to trigger for different ODE instances while still benefiting from efficient parallel solving.
 
 ## Example 1: Different Reset Thresholds Per ODE
 
 ### Problem Setup
 
-Consider solving multiple instances of an exponential growth model in parallel (on CPU or GPU):
+Consider solving multiple instances of an exponential growth model in parallel:
 
 ```math
 \frac{du}{dt} = p \cdot u, \quad u(0) = 1
 ```
 
-where $p$ is the growth rate parameter. We want to solve three instances with $p = 1.0$ over the time span $t \in [0, 5]$, but with different callback behaviors:
+where `p` is the growth rate parameter. We want to solve three instances with `p = 1.0` over the time span t in [0, 5], but with different callback behaviors:
 
-- **ODE 1**: Reset $u$ to 1.0 when $u > 3.0$
-- **ODE 2**: Reset $u$ to 1.0 when $u > 6.0$
-- **ODE 3**: Reset $u$ to 1.0 when $u > 10.0$
-
-Mathematically, each ODE $i$ has a discrete callback condition:
-
-```math
-\text{Condition}_i: \quad u_i > \theta_i
-```
-
-```math
-\text{Action}_i: \quad u_i \leftarrow 1.0
-```
-
-where $\theta_1 = 3.0$, $\theta_2 = 6.0$, and $\theta_3 = 10.0$.
+- **ODE 1**: Reset u to 1.0 when u > 3.0
+- **ODE 2**: Reset u to 1.0 when u > 6.0
+- **ODE 3**: Reset u to 1.0 when u > 10.0
 
 ### Implementation
-
-The key insight is that LockstepODE allows you to pass a vector of callbacks, one for each ODE:
 
 ```julia
 using LockstepODE
@@ -62,14 +48,18 @@ cb3 = DiscreteCallback(
 )
 
 # Pass callbacks as a vector - each callback applies to corresponding ODE
-lockstep_func = LockstepFunction(exponential_growth!, 1, 3, callbacks = [cb1, cb2, cb3])
-prob = ODEProblem(lockstep_func, ones(3), (0.0, 5.0), [1.0, 1.0, 1.0])
+lf = LockstepFunction(exponential_growth!, 1, 3; callbacks=[cb1, cb2, cb3])
+
+# Create problem with per-ODE initial conditions and parameters
+u0s = [[1.0], [1.0], [1.0]]
+ps = [1.0, 1.0, 1.0]
+
+prob = LockstepProblem(lf, u0s, (0.0, 5.0), ps)
 sol = solve(prob, Tsit5())
 
-# Extract individual solutions
-individual_sols = extract_solutions(lockstep_func, sol)
-for (i, isol) in enumerate(individual_sols)
-    println("  ODE $i: u=$(round(isol.u[end][1], digits=3)), resets=$(callback_counts[i])")
+# Access individual solutions directly
+for i in 1:3
+    println("  ODE $i: u=$(round(sol[i].u[end][1], digits=3)), resets=$(callback_counts[i])")
 end
 ```
 
@@ -87,13 +77,10 @@ This allows each ODE to maintain different dynamics despite being solved efficie
 ### Expected Output
 
 ```
-Example 1: Callbacks with Different Thresholds
   ODE 1: u=2.991, resets=4
   ODE 2: u=5.983, resets=2
   ODE 3: u=2.447, resets=1
 ```
-
-Note that the final values depend on exactly when the solver steps occur relative to the threshold crossings, but the pattern of reset frequencies remains consistent: ODE 1 resets most often, ODE 3 resets least often.
 
 ---
 
@@ -101,27 +88,9 @@ Note that the final values depend on exactly when the solver steps occur relativ
 
 ### Problem Setup
 
-Sometimes you want the same callback behavior for all ODEs in your system. Consider the same exponential growth model:
-
-```math
-\frac{du}{dt} = p \cdot u, \quad u(0) = 1
-```
-
-with $p = 1.0$ for all three instances. Now we want a single shared callback condition:
-
-```math
-\text{Condition}: \quad u > 5.0 \quad \text{(for any ODE)}
-```
-
-```math
-\text{Action}: \quad u \leftarrow 1.0
-```
-
-This callback applies uniformly to all three ODEs - whenever any ODE exceeds the threshold, it gets reset.
+Sometimes you want the same callback behavior for all ODEs in your system. Consider the same exponential growth model with a single shared callback condition.
 
 ### Implementation
-
-Instead of passing a vector of callbacks, pass a single callback object:
 
 ```julia
 shared_count = Ref(0)
@@ -131,13 +100,16 @@ shared_cb = DiscreteCallback(
 )
 
 # Pass a single callback - it applies to all ODEs
-lockstep_func_shared = LockstepFunction(exponential_growth!, 1, 3, callbacks = shared_cb)
-prob_shared = ODEProblem(lockstep_func_shared, ones(3), (0.0, 5.0), [1.0, 1.0, 1.0])
+lf_shared = LockstepFunction(exponential_growth!, 1, 3; callbacks=shared_cb)
+
+u0s = [[1.0], [1.0], [1.0]]
+ps = [1.0, 1.0, 1.0]
+
+prob_shared = LockstepProblem(lf_shared, u0s, (0.0, 5.0), ps)
 sol_shared = solve(prob_shared, Tsit5())
 
-individual_sols_shared = extract_solutions(lockstep_func_shared, sol_shared)
-for (i, isol) in enumerate(individual_sols_shared)
-    println("  ODE $i: u=$(round(isol.u[end][1], digits=3))")
+for i in 1:3
+    println("  ODE $i: u=$(round(sol_shared[i].u[end][1], digits=3))")
 end
 println("  Total resets: $(shared_count[])")
 ```
@@ -149,19 +121,14 @@ When you pass a single callback (not in a vector), LockstepODE applies it to all
 - Implementing shared stopping conditions
 - Applying uniform physical constraints
 
-Since all three ODEs have identical parameters and the same callback, they exhibit identical behavior and reset at the same rate.
-
 ### Expected Output
 
 ```
-Example 2: Shared Callback Applied to All ODEs
-  ODE 1: u=4.978, resets=2
-  ODE 2: u=4.978, resets=2
-  ODE 3: u=4.978, resets=2
+  ODE 1: u=4.978
+  ODE 2: u=4.978
+  ODE 3: u=4.978
   Total resets: 6
 ```
-
-All three ODEs have identical final states and reset counts. The total reset count (6) equals 3 ODEs × 2 resets per ODE.
 
 ---
 
@@ -169,50 +136,32 @@ All three ODEs have identical final states and reset counts. The total reset cou
 
 ### Problem Setup
 
-The most flexible scenario combines different parameters for each ODE with different callback behaviors. Consider three exponential growth models with different growth rates:
-
-```math
-\frac{du_i}{dt} = p_i \cdot u_i, \quad u_i(0) = 1
-```
-
-where:
-- $p_1 = 0.5$ with threshold $\theta_1 = 4.0$
-- $p_2 = 1.0$ with threshold $\theta_2 = 5.0$
-- $p_3 = 1.5$ with threshold $\theta_3 = 6.0$
-
-Each ODE has both different dynamics (growth rates) and different callback conditions:
-
-```math
-\text{Condition}_i: \quad u_i > \theta_i
-```
-
-```math
-\text{Action}_i: \quad u_i \leftarrow 1.0
-```
-
-We also log the time at which each reset occurs to analyze the temporal dynamics.
+Combine different parameters for each ODE with different callback behaviors:
 
 ### Implementation
 
 ```julia
 growth_rates = [0.5, 1.0, 1.5]
 thresholds = [4.0, 5.0, 6.0]
-callback_logs = [[] for _ in 1:3]
+callback_logs = [Float64[] for _ in 1:3]
 
 # Create per-ODE callbacks with different thresholds and logging
-callbacks_varied = [DiscreteCallback(
-                        (u, t, integrator) -> u[1] > thresholds[i],
-                        integrator -> (push!(callback_logs[i], integrator.t); integrator.u[1] = 1.0)
-                    ) for i in 1:3]
+callbacks_varied = [
+    DiscreteCallback(
+        (u, t, integrator) -> u[1] > thresholds[i],
+        integrator -> (push!(callback_logs[i], integrator.t); integrator.u[1] = 1.0)
+    ) for i in 1:3
+]
 
-lockstep_func_varied = LockstepFunction(
-    exponential_growth!, 1, 3, callbacks = callbacks_varied)
-prob_varied = ODEProblem(lockstep_func_varied, ones(3), (0.0, 5.0), growth_rates)
+lf_varied = LockstepFunction(exponential_growth!, 1, 3; callbacks=callbacks_varied)
+
+u0s = [[1.0], [1.0], [1.0]]
+prob_varied = LockstepProblem(lf_varied, u0s, (0.0, 5.0), growth_rates)
 sol_varied = solve(prob_varied, Tsit5())
 
-individual_sols_varied = extract_solutions(lockstep_func_varied, sol_varied)
-for (i, isol) in enumerate(individual_sols_varied)
-    println("  ODE $i (rate=$(growth_rates[i]), thresh=$(thresholds[i])): u=$(round(isol.u[end][1], digits=3)), resets=$(length(callback_logs[i]))")
+for i in 1:3
+    println("  ODE $i (rate=$(growth_rates[i]), thresh=$(thresholds[i])): " *
+            "u=$(round(sol_varied[i].u[end][1], digits=3)), resets=$(length(callback_logs[i]))")
 end
 ```
 
@@ -220,33 +169,82 @@ end
 
 This example demonstrates the full flexibility of LockstepODE's per-ODE callback system:
 
-1. **Different parameters**: Each ODE has a different growth rate via the `growth_rates` vector
-2. **Different callbacks**: Each callback has a different threshold appropriate for its growth rate
-3. **Individual tracking**: Each callback logs to its own array, allowing per-ODE analysis
-
-The design is elegant: faster-growing ODEs (larger $p_i$) have higher thresholds ($\theta_i$), creating a balanced system where reset frequencies depend on both the growth dynamics and the chosen thresholds.
-
-Note the use of a comprehension to generate the callback vector - this pattern scales naturally to arbitrary numbers of ODEs.
+1. **Different parameters**: Each ODE has a different growth rate
+2. **Different callbacks**: Each callback has a different threshold
+3. **Individual tracking**: Each callback logs to its own array
 
 ### Expected Output
 
 ```
-Example 3: Callbacks with Different Parameters
   ODE 1 (rate=0.5, thresh=4.0): u=3.993, resets=1
   ODE 2 (rate=1.0, thresh=5.0): u=4.975, resets=2
   ODE 3 (rate=1.5, thresh=6.0): u=4.016, resets=2
 ```
 
-The reset patterns show an interesting relationship: despite having different growth rates and thresholds, the middle ODE (rate=1.0, thresh=5.0) and fastest ODE (rate=1.5, thresh=6.0) both reset twice, while the slowest ODE (rate=0.5, thresh=4.0) only resets once. This demonstrates how the threshold-to-growth-rate ratio determines callback frequency.
+---
+
+## Callbacks in Both Modes
+
+Callbacks work in both Ensemble and Batched modes:
+
+### Ensemble Mode (Default)
+
+Each ODE gets its own integrator with standard OrdinaryDiffEq callbacks:
+
+```julia
+prob = LockstepProblem(lf, u0s, tspan, ps)  # Callbacks work directly
+sol = solve(prob, Tsit5())
+```
+
+### Batched Mode
+
+Callbacks are automatically wrapped to work with the batched state:
+
+```julia
+prob = LockstepProblem{Batched}(lf, u0s, tspan, ps)
+sol = solve(prob, Tsit5())  # Callbacks still work!
+```
+
+The callback wrapping is transparent - you use the same callback definitions.
+
+---
+
+## ContinuousCallback Example
+
+LockstepODE also supports `ContinuousCallback` for root-finding events:
+
+```julia
+using OrdinaryDiffEq: ContinuousCallback
+
+# Bouncing ball - reverse velocity when position reaches zero
+function ball!(du, u, p, t)
+    du[1] = u[2]      # position
+    du[2] = -9.81     # velocity (gravity)
+end
+
+# Continuous callback for ground detection
+bounce_cb = ContinuousCallback(
+    (u, t, integrator) -> u[1],  # Condition: position = 0
+    integrator -> (integrator.u[2] = -0.8 * integrator.u[2])  # Affect: bounce
+)
+
+lf = LockstepFunction(ball!, 2, 3; callbacks=bounce_cb)
+u0s = [[1.0, 0.0], [2.0, 0.0], [3.0, 0.0]]  # Different drop heights
+
+prob = LockstepProblem(lf, u0s, (0.0, 5.0))
+sol = solve(prob, Tsit5())
+```
 
 ---
 
 ## Summary
 
-LockstepODE.jl provides flexible callback support that maintains the individual identity of each ODE while solving them efficiently in parallel:
+LockstepODE.jl provides flexible callback support:
 
-- **Per-ODE callbacks**: Pass a vector of callbacks to apply different conditions/actions to each ODE
+- **Per-ODE callbacks**: Pass a vector of callbacks to apply different conditions to each ODE
 - **Shared callbacks**: Pass a single callback to apply the same behavior to all ODEs
-- **Arbitrary complexity**: Combine with different parameters, custom logging, and any SciML-compatible callback type
+- **Both callback types**: `DiscreteCallback` and `ContinuousCallback` are supported
+- **Both modes**: Works in Ensemble and Batched modes transparently
+- **Standard syntax**: Use the same callback definitions as standard OrdinaryDiffEq
 
-This design pattern extends to all SciML callback types (continuous callbacks, callback sets, etc.), making LockstepODE a powerful tool for parallel ODE solving with complex event handling.
+This design pattern extends to all SciML callback types, making LockstepODE a powerful tool for parallel ODE solving with complex event handling.

@@ -222,12 +222,8 @@ function create_lockstep_callbacks(bf::BatchedFunction)
         cb = _get_ode_callback(lf.callbacks, i, lf.num_odes)
         isnothing(cb) && continue
 
-        if cb isa DiscreteCallback
-            wrapped_cb = _wrap_discrete_callback(cb, bf, i)
-            push!(wrapped_callbacks, wrapped_cb)
-        elseif cb isa ContinuousCallback
-            wrapped_cb = _wrap_continuous_callback(cb, bf, i)
-            push!(wrapped_callbacks, wrapped_cb)
+        if cb isa DiscreteCallback || cb isa ContinuousCallback
+            push!(wrapped_callbacks, _wrap_callback(cb, bf, i))
         else
             error("Unsupported callback type: $(typeof(cb)). " *
                   "Only DiscreteCallback and ContinuousCallback are supported.")
@@ -243,46 +239,39 @@ function create_lockstep_callbacks(bf::BatchedFunction)
     end
 end
 
-function _wrap_discrete_callback(cb::DiscreteCallback, bf::BatchedFunction, ode_idx::Int)
-    wrapped_condition = function (_u, _t, integrator)
+# Shared callback wrapping helpers
+@inline function _wrap_condition(bf::BatchedFunction, ode_idx::Int, condition)
+    return function (_u, _t, integrator)
         sub = SubIntegrator(integrator, bf, ode_idx)
-        return cb.condition(sub.u, sub.t, sub)
+        return condition(sub.u, sub.t, sub)
     end
-
-    wrapped_affect! = function (integrator)
-        sub = SubIntegrator(integrator, bf, ode_idx)
-        cb.affect!(sub)
-        return nothing
-    end
-
-    return DiscreteCallback(wrapped_condition, wrapped_affect!;
-                            save_positions=cb.save_positions)
 end
 
-function _wrap_continuous_callback(cb::ContinuousCallback, bf::BatchedFunction, ode_idx::Int)
-    wrapped_condition = function (_u, _t, integrator)
+@inline function _wrap_affect(bf::BatchedFunction, ode_idx::Int, affect!)
+    return function (integrator)
         sub = SubIntegrator(integrator, bf, ode_idx)
-        return cb.condition(sub.u, sub.t, sub)
-    end
-
-    wrapped_affect! = function (integrator)
-        sub = SubIntegrator(integrator, bf, ode_idx)
-        cb.affect!(sub)
+        affect!(sub)
         return nothing
     end
+end
 
-    wrapped_affect_neg! = if !isnothing(cb.affect_neg!)
-        function (integrator)
-            sub = SubIntegrator(integrator, bf, ode_idx)
-            cb.affect_neg!(sub)
-            return nothing
-        end
-    else
-        nothing
-    end
+function _wrap_callback(cb::DiscreteCallback, bf::BatchedFunction, ode_idx::Int)
+    return DiscreteCallback(
+        _wrap_condition(bf, ode_idx, cb.condition),
+        _wrap_affect(bf, ode_idx, cb.affect!);
+        save_positions=cb.save_positions
+    )
+end
 
-    return ContinuousCallback(wrapped_condition, wrapped_affect!, wrapped_affect_neg!;
-                              save_positions=cb.save_positions)
+function _wrap_callback(cb::ContinuousCallback, bf::BatchedFunction, ode_idx::Int)
+    wrapped_affect_neg! = isnothing(cb.affect_neg!) ? nothing :
+                          _wrap_affect(bf, ode_idx, cb.affect_neg!)
+    return ContinuousCallback(
+        _wrap_condition(bf, ode_idx, cb.condition),
+        _wrap_affect(bf, ode_idx, cb.affect!),
+        wrapped_affect_neg!;
+        save_positions=cb.save_positions
+    )
 end
 
 #==============================================================================#
