@@ -1,28 +1,34 @@
 module LockstepODEAMDGPUExt
 
 using LockstepODE
-import KernelAbstractions as KA
 using AMDGPU
+import KernelAbstractions as KA
 
+"""
+GPU kernel for batched ODE evaluation on AMD GPUs.
 
-KA.@kernel function ode_kernel!(lockstep_func, du, u, p, t)
+Wraps the core `ode_kernel!` function for execution on AMD GPUs.
+"""
+KA.@kernel function lockstep_kernel_gpu!(bf, du, u, p, t)
     i = KA.@index(Global)
-    LockstepODE.ode_kernel!(i, lockstep_func, du, u, p, t)
+    LockstepODE.ode_kernel!(i, bf, du, u, p, t)
 end
 
-# AMDGPU/ROCm array dispatch - automatically use GPU implementation for ROCArrays
-function (lockstep_func::LockstepODE.LockstepFunction{O, F})(
-        du::ROCArray, u::ROCArray, p, t) where {O, F}
+"""
+Dispatch for ROCArray - enables automatic GPU execution for AMD GPUs.
+
+When `u` and `du` are `ROCArray`s, the batched ODE evaluation is performed
+on the GPU using KernelAbstractions.jl.
+"""
+function (bf::LockstepODE.BatchedFunction)(du::ROCArray, u::ROCArray, p, t)
     backend = KA.get_backend(u)
-    N = lockstep_func.num_odes
+    N = bf.lf.num_odes
 
-    # Calculate optimal workgroup size for GPU
-    workgroup_size = min(256, N)  # Common GPU warp/wavefront size
-
-    kernel = ode_kernel!(backend)
-    kernel(lockstep_func, du, u, p, t; ndrange = N, workgroupsize = workgroup_size)
+    kernel = lockstep_kernel_gpu!(backend)
+    kernel(bf, du, u, p, t; ndrange=N)
     KA.synchronize(backend)
+
     return nothing
 end
 
-end
+end # module
