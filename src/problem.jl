@@ -27,14 +27,14 @@ Problem type for batched ODE solving with mode-specific behavior.
 
 # Constructors
 ```julia
-# Default: Ensemble mode
+# Default: Batched mode (best performance)
 LockstepProblem(lf, u0s, tspan, p=nothing)
 
-# Explicit Ensemble mode
-LockstepProblem{Ensemble}(lf, u0s, tspan, p=nothing)
-
-# Batched mode with options
+# Explicit Batched mode with options
 LockstepProblem{Batched}(lf, u0s, tspan, p=nothing; ordering=PerODE(), internal_threading=true)
+
+# Ensemble mode (independent timesteps per ODE)
+LockstepProblem{Ensemble}(lf, u0s, tspan, p=nothing)
 ```
 
 # Examples
@@ -50,13 +50,13 @@ lf = LockstepFunction(lorenz!, 3, 10)
 u0s = [[1.0, 0.0, 0.0] for _ in 1:10]
 p = (10.0, 28.0, 8/3)
 
-# Ensemble mode (default) - N independent integrators
-prob_e = LockstepProblem(lf, u0s, (0.0, 10.0), p)
-sol_e = solve(prob_e, Tsit5())
-
-# Batched mode - single batched integrator, GPU-compatible
-prob_b = LockstepProblem{Batched}(lf, u0s, (0.0, 10.0), p)
+# Batched mode (default) - single batched integrator, GPU-compatible
+prob_b = LockstepProblem(lf, u0s, (0.0, 10.0), p)
 sol_b = solve(prob_b, Tsit5())
+
+# Ensemble mode - N independent integrators with adaptive timesteps
+prob_e = LockstepProblem{Ensemble}(lf, u0s, (0.0, 10.0), p)
+sol_e = solve(prob_e, Tsit5())
 ```
 """
 struct LockstepProblem{M<:LockstepMode, LF, U, T, P, Opts}
@@ -68,13 +68,13 @@ struct LockstepProblem{M<:LockstepMode, LF, U, T, P, Opts}
 end
 
 #==============================================================================#
-# Ensemble Mode Constructor (Default)
+# Default Constructor (Batched Mode)
 #==============================================================================#
 
 """
     LockstepProblem(lf, u0s, tspan, p=nothing)
 
-Construct a LockstepProblem with default Ensemble mode.
+Construct a LockstepProblem with default Batched mode.
 """
 function LockstepProblem(
     lf::LockstepFunction{F, C},
@@ -82,7 +82,7 @@ function LockstepProblem(
     tspan::Tuple,
     p = nothing
 ) where {F, C}
-    return LockstepProblem{Ensemble}(lf, u0s, tspan, p)
+    return LockstepProblem{Batched}(lf, u0s, tspan, p)
 end
 
 """

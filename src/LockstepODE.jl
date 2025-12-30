@@ -39,6 +39,9 @@ export ode_kernel!, _get_idxs
 # CommonSolve interface
 export init, solve, solve!, step!, reinit!
 
+# Ensemble mode utilities
+export update_retcode!
+
 # Solution utilities
 export extract_solutions, extract_at_time
 

@@ -81,30 +81,46 @@ end
 
     lf = LockstepFunction(decay!, 1, 3)
     u0s = [[1.0], [2.0], [3.0]]
-    prob = LockstepProblem(lf, u0s, (0.0, 1.0))
-    sol = solve(prob, Tsit5())
 
-    # Test indexing
-    @test sol[1] === sol.solutions[1]
-    @test sol[2] === sol.solutions[2]
-    @test sol[3] === sol.solutions[3]
+    # Test with Batched mode (default)
+    prob_b = LockstepProblem(lf, u0s, (0.0, 1.0))
+    sol_b = solve(prob_b, Tsit5())
 
-    # Test length
-    @test length(sol) == 3
+    # Test indexing - Batched mode creates wrappers, check values match
+    @test sol_b[1].u[end] ≈ sol_b.solutions[1].u[end]
+    @test sol_b[2].u[end] ≈ sol_b.solutions[2].u[end]
+    @test sol_b[3].u[end] ≈ sol_b.solutions[3].u[end]
+
+    # Test with Ensemble mode (identity preserved)
+    prob_e = LockstepProblem{Ensemble}(lf, u0s, (0.0, 1.0))
+    sol_e = solve(prob_e, Tsit5())
+
+    @test sol_e[1] === sol_e.solutions[1]
+    @test sol_e[2] === sol_e.solutions[2]
+    @test sol_e[3] === sol_e.solutions[3]
+
+    # Test length (both modes)
+    @test length(sol_b) == 3
+    @test length(sol_e) == 3
 
     # Test iteration
-    collected = collect(sol)
-    @test length(collected) == 3
-    for s in collected
+    collected_b = collect(sol_b)
+    collected_e = collect(sol_e)
+    @test length(collected_b) == 3
+    @test length(collected_e) == 3
+    for s in collected_e
         @test s isa ODESolution
     end
 
     # Test eachindex
-    @test collect(eachindex(sol)) == [1, 2, 3]
+    @test collect(eachindex(sol_b)) == [1, 2, 3]
+    @test collect(eachindex(sol_e)) == [1, 2, 3]
 
     # Test firstindex/lastindex
-    @test firstindex(sol) == 1
-    @test lastindex(sol) == 3
+    @test firstindex(sol_b) == 1
+    @test lastindex(sol_b) == 3
+    @test firstindex(sol_e) == 1
+    @test lastindex(sol_e) == 3
 end
 
 @testitem "extract_solutions compatibility" begin

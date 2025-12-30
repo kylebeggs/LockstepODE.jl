@@ -138,7 +138,7 @@ function benchmark_main(f!, ode_size::Int, num_odes::Int, u0_single, p; warmup=t
 end
 
 """
-Benchmark v2.0 branch (multi-integrator)
+Benchmark v2.0 branch (multi-integrator / Ensemble mode)
 """
 function benchmark_v2(f!, ode_size::Int, num_odes::Int, u0_single, p; warmup=true)
     # Create LockstepFunction (v2.0 API)
@@ -150,8 +150,8 @@ function benchmark_v2(f!, ode_size::Int, num_odes::Int, u0_single, p; warmup=tru
     # Parameters: v2.0 expects vector of per-ODE parameters
     ps = p isa Nothing ? fill(nothing, num_odes) : (p isa Number ? fill(p, num_odes) : fill(p, num_odes))
 
-    # Create problem
-    prob = LockstepV2.LockstepProblem(lf, u0s, TSPAN, ps)
+    # Create problem - explicitly use Ensemble mode for multi-integrator comparison
+    prob = LockstepV2.LockstepProblem{LockstepV2.Ensemble}(lf, u0s, TSPAN, ps)
 
     # Warmup
     if warmup

@@ -41,11 +41,11 @@ lf = LockstepFunction(
 # Initial conditions as vector of vectors
 u0s = [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]
 
-# Create problem (Ensemble mode by default)
+# Create problem (Batched mode by default - best performance)
 prob = LockstepProblem(lf, u0s, tspan, p)
 
-# Or explicitly use Batched mode
-prob = LockstepProblem{Batched}(lf, u0s, tspan, p)
+# Or explicitly use Ensemble mode (independent per-ODE timesteps)
+prob = LockstepProblem{Ensemble}(lf, u0s, tspan, p)
 ```
 
 ## Step 4: Solve and Access Solutions
@@ -62,39 +62,95 @@ sol[3](1.5)  # Third ODE interpolated at t=1.5
 
 ## Execution Modes
 
-LockstepODE provides two execution modes:
+LockstepODE provides two execution modes with different performance characteristics and tradeoffs.
 
-### Ensemble Mode (Default)
-
-N independent ODE integrators, each with adaptive timestepping:
-
-```julia
-prob = LockstepProblem(lf, u0s, tspan, p)
-# or explicitly:
-prob = LockstepProblem{Ensemble}(lf, u0s, tspan, p)
-```
-
-**Best for:**
-- Per-ODE introspection and control
-- Complex per-ODE callbacks
-- ModelingToolkit integration
-- When ODEs have very different dynamics
-
-### Batched Mode
+### Batched Mode (Default)
 
 Single integrator with batched state vector and parallel RHS evaluation:
 
 ```julia
+prob = LockstepProblem(lf, u0s, tspan, p)  # Default is Batched
+# or explicitly:
 prob = LockstepProblem{Batched}(lf, u0s, tspan, p;
     ordering = PerODE(),        # Memory layout
     internal_threading = true   # CPU threading
 )
 ```
 
+**Pros:**
+- 10-100x faster for large N (N > 100)
+- Lower memory overhead (single integrator vs N integrators)
+- GPU-compatible
+- Simpler synchronization (all ODEs share same timestep)
+
+**Cons:**
+- **Stiffness penalty**: If ONE ODE encounters stiffness requiring smaller timesteps, ALL ODEs pay the performance cost
+- All ODEs must use the same solver tolerance
+- Per-ODE callbacks have overhead from batched wrapper
+
 **Best for:**
 - Large number of ODEs (N > 100)
+- ODEs with similar dynamics/stiffness
 - GPU acceleration
-- Maximum performance when per-ODE control isn't needed
+- Maximum throughput when per-ODE control isn't needed
+
+### Ensemble Mode
+
+N independent ODE integrators, each with adaptive timestepping:
+
+```julia
+prob = LockstepProblem{Ensemble}(lf, u0s, tspan, p)
+```
+
+**Pros:**
+- **Independent timesteps**: Stiff ODEs can take smaller steps without penalizing smooth ODEs
+- Per-ODE control and introspection
+- Native callback support (no wrapper overhead)
+- Each ODE can have different tolerances
+
+**Cons:**
+- Higher overhead (N integrators vs 1)
+- More memory (N solution objects)
+- Synchronization cost after each step
+- No GPU support
+
+**Best for:**
+- ODEs with heterogeneous dynamics (some stiff, some smooth)
+- Per-ODE callbacks with fine control
+- Small N (< 100)
+- Per-ODE introspection during integration
+
+## Choosing an Execution Mode
+
+| Scenario | Recommended Mode |
+|----------|-----------------|
+| N > 100 ODEs with similar dynamics | **Batched** |
+| GPU acceleration needed | **Batched** |
+| Mixed stiff/smooth ODEs | **Ensemble** |
+| Per-ODE adaptive tolerances | **Ensemble** |
+| N < 100 with complex callbacks | **Ensemble** |
+| Maximum throughput, homogeneous systems | **Batched** |
+
+### Performance Characteristics
+
+| N ODEs | Batched vs Ensemble | Notes |
+|--------|---------------------|-------|
+| 10     | ~1x                 | Similar performance |
+| 100    | ~5x faster          | Batched starts winning |
+| 1000   | ~20x faster         | Batched clearly better |
+| 10000  | ~70x faster         | Batched much better |
+
+**Exception**: If your ODEs have mixed stiffness, Ensemble may win despite higher overhead because each ODE adapts its timestep independently.
+
+### The Stiffness Tradeoff
+
+The key architectural difference is how stiffness affects the system:
+
+**Batched Mode**: All ODEs share the same timestep. If ODE #47 out of 1000 becomes stiff and needs dt=1e-6, ALL 1000 ODEs use dt=1e-6. This can dramatically slow down the entire batch.
+
+**Ensemble Mode**: Each ODE has its own adaptive timestep. ODE #47 can use dt=1e-6 while the other 999 ODEs continue with dt=0.1. Only the stiff ODE pays the performance cost.
+
+For homogeneous systems (all ODEs have similar dynamics), Batched mode's lower overhead wins decisively. For heterogeneous systems, consider benchmarking both modes with your specific workload
 
 ## Complete Example: Exponential Decay
 

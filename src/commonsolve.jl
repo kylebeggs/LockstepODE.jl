@@ -8,6 +8,7 @@ Dispatches on mode: LockstepProblem{Ensemble} or LockstepProblem{Batched}.
 using OrdinaryDiffEq: ODEProblem, ODESolution, CallbackSet
 using OrdinaryDiffEq: init as ode_init, solve as ode_solve, solve! as ode_solve!
 using SciMLBase: ReturnCode
+using OhMyThreads: tforeach
 import CommonSolve: solve!, init, solve
 
 #==============================================================================#
@@ -23,7 +24,7 @@ Creates N independent ODE integrators that can be stepped manually or solved to 
 
 # Example
 ```julia
-prob = LockstepProblem(lf, u0s, (0.0, 10.0), p)  # Default Ensemble mode
+prob = LockstepProblem{Ensemble}(lf, u0s, (0.0, 10.0), p)  # Explicit Ensemble mode
 integ = init(prob, Tsit5())
 step!(integ)
 step!(integ, 0.1, true)
@@ -49,7 +50,7 @@ function CommonSolve.init(
     integrators[1] = first_integ
 
     # Initialize remaining integrators in parallel
-    Threads.@threads for i in 2:lf.num_odes
+    tforeach(2:lf.num_odes) do i
         integrators[i] = ode_init(problems[i], alg; save_everystep, kwargs...)
     end
 
@@ -110,10 +111,13 @@ sol = solve!(integ)  # Complete the solve
 """
 function CommonSolve.solve!(integ::EnsembleLockstepIntegrator)::LockstepSolution
     # Solve all integrators to completion in parallel
-    Threads.@threads for i in eachindex(integ.integrators)
+    tforeach(eachindex(integ.integrators)) do i
         ode_solve!(integ.integrators[i])
     end
     integ.t = integ.tspan[2]
+
+    # Update retcode after completion
+    update_retcode!(integ)
 
     return _finalize_ensemble_solution(integ)
 end

@@ -9,6 +9,7 @@ Two modes:
 using SciMLBase: ReturnCode
 using SciMLBase: step! as sciml_step!, reinit! as sciml_reinit!
 import SciMLBase: step!, reinit!
+using OhMyThreads: tforeach
 
 #==============================================================================#
 # Abstract Type
@@ -106,7 +107,7 @@ end
 
 @inline function _compute_minimum_dt(integrators)
     dt_min = integrators[1].dt
-    @inbounds for i in 2:length(integrators)
+    @inbounds @simd for i in 2:length(integrators)
         dt_i = integrators[i].dt
         dt_min = ifelse(dt_i < dt_min, dt_i, dt_min)
     end
@@ -115,7 +116,7 @@ end
 
 @inline function _compute_minimum_t(integrators)
     t_min = integrators[1].t
-    @inbounds for i in 2:length(integrators)
+    @inbounds @simd for i in 2:length(integrators)
         t_i = integrators[i].t
         t_min = ifelse(t_i < t_min, t_i, t_min)
     end
@@ -199,17 +200,17 @@ end
 
 Advance all integrators by one adaptive step.
 Updates `integ.t` to the minimum time across all integrators.
+
+Note: Retcode is updated lazily via `update_retcode!` for performance.
+Call `update_retcode!(integ)` explicitly if immediate failure detection is needed.
 """
 function step!(integ::EnsembleLockstepIntegrator)
-    Threads.@threads for i in eachindex(integ.integrators)
+    tforeach(eachindex(integ.integrators)) do i
         sciml_step!(integ.integrators[i])
     end
 
     # Update lockstep time to minimum across all integrators
     integ.t = _compute_minimum_t(integ.integrators)
-
-    # Check for failures
-    _update_retcode!(integ)
 
     return nothing
 end
@@ -222,19 +223,28 @@ Advance all integrators by time `dt`.
 # Arguments
 - `dt`: Time increment
 - `stop_at_tdt`: If `true`, step exactly to `t + dt`. If `false`, step may overshoot.
+
+Note: Retcode is updated lazily via `update_retcode!` for performance.
 """
 function step!(integ::EnsembleLockstepIntegrator, dt, stop_at_tdt::Bool = false)
-    Threads.@threads for i in eachindex(integ.integrators)
+    tforeach(eachindex(integ.integrators)) do i
         sciml_step!(integ.integrators[i], dt, stop_at_tdt)
     end
 
     integ.t = _compute_minimum_t(integ.integrators)
-    _update_retcode!(integ)
 
     return nothing
 end
 
-function _update_retcode!(integ::EnsembleLockstepIntegrator)
+"""
+    update_retcode!(integ::EnsembleLockstepIntegrator)
+
+Update the integrator's retcode by checking all sub-integrators for failures.
+
+Called automatically by `solve!` after integration completes.
+Call manually during stepping if immediate failure detection is needed.
+"""
+function update_retcode!(integ::EnsembleLockstepIntegrator)
     # Check all integrators for failures (don't stop at first)
     # The first failure found becomes the "official" retcode
     for sub in integ.integrators
@@ -246,6 +256,7 @@ function _update_retcode!(integ::EnsembleLockstepIntegrator)
             # Continue checking all integrators instead of returning early
         end
     end
+    return nothing
 end
 
 #==============================================================================#

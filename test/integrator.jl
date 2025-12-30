@@ -9,14 +9,22 @@
 
     lf = LockstepFunction(decay!, 1, 3)
     u0s = [[1.0], [2.0], [3.0]]
-    prob = LockstepProblem(lf, u0s, (0.0, 1.0))
 
-    integ = init(prob, Tsit5())
+    # Test both modes
+    prob_batched = LockstepProblem(lf, u0s, (0.0, 1.0))
+    prob_ensemble = LockstepProblem{Ensemble}(lf, u0s, (0.0, 1.0))
 
-    @test integ isa LockstepIntegrator
-    @test length(integ) == 3
-    @test integ.t == 0.0
-    @test integ.tspan == (0.0, 1.0)
+    integ_b = init(prob_batched, Tsit5())
+    integ_e = init(prob_ensemble, Tsit5())
+
+    @test integ_b isa LockstepIntegrator
+    @test integ_e isa LockstepIntegrator
+    @test length(integ_b) == 3
+    @test length(integ_e) == 3
+    @test integ_b.t == 0.0
+    @test integ_e.t == 0.0
+    @test integ_b.tspan == (0.0, 1.0)
+    @test integ_e.tspan == (0.0, 1.0)
 end
 
 @testitem "LockstepIntegrator indexing" begin
@@ -85,15 +93,26 @@ end
 
     lf = LockstepFunction(decay!, 1, 3)
     u0s = [[1.0], [2.0], [3.0]]
-    prob = LockstepProblem(lf, u0s, (0.0, 1.0))
-    integ = init(prob, Tsit5())
 
-    # Test iteration
-    collected = collect(integ)
-    @test length(collected) == 3
-    @test collected[1] === integ[1]
-    @test collected[2] === integ[2]
-    @test collected[3] === integ[3]
+    # Test Ensemble mode iteration (identity preserved)
+    prob_e = LockstepProblem{Ensemble}(lf, u0s, (0.0, 1.0))
+    integ_e = init(prob_e, Tsit5())
+
+    collected_e = collect(integ_e)
+    @test length(collected_e) == 3
+    @test collected_e[1] === integ_e[1]
+    @test collected_e[2] === integ_e[2]
+    @test collected_e[3] === integ_e[3]
+
+    # Test Batched mode iteration (values match, not identity since SubIntegrator is created on access)
+    prob_b = LockstepProblem(lf, u0s, (0.0, 1.0))
+    integ_b = init(prob_b, Tsit5())
+
+    collected_b = collect(integ_b)
+    @test length(collected_b) == 3
+    @test collected_b[1].u ≈ integ_b[1].u
+    @test collected_b[2].u ≈ integ_b[2].u
+    @test collected_b[3].u ≈ integ_b[3].u
 end
 
 @testitem "step! single step" begin
