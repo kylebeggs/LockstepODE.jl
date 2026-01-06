@@ -39,7 +39,7 @@ end
 
     # Single callback (shared)
     cb = DiscreteCallback((u, t, i) -> u[1] > 5.0, i -> (i.u[1] = 1.0))
-    lf = LockstepFunction(f!, 1, 3; callbacks=cb)
+    lf = LockstepFunction(f!, 1, 3; callbacks = cb)
     @test lf.callbacks === cb
 
     # Vector of callbacks (per-ODE)
@@ -48,6 +48,6 @@ end
         DiscreteCallback((u, t, i) -> u[1] > 10.0, i -> (i.u[1] = 1.0)),
         DiscreteCallback((u, t, i) -> u[1] > 15.0, i -> (i.u[1] = 1.0))
     ]
-    lf2 = LockstepFunction(f!, 1, 3; callbacks=cbs)
+    lf2 = LockstepFunction(f!, 1, 3; callbacks = cbs)
     @test lf2.callbacks === cbs
 end

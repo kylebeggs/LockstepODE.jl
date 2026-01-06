@@ -8,21 +8,22 @@ module LockstepODEMTKExt
 
 using LockstepODE
 using ModelingToolkit
-using ModelingToolkit: ODESystem, ODEFunction, parameters, unknowns
+using ModelingToolkit: System, ODEFunction, parameters, unknowns
+using ModelingToolkit.Symbolics: getdefault, hasdefault
 
 import LockstepODE: LockstepFunction
 
 """
-    LockstepFunction(sys::ODESystem, num_odes::Int; kwargs...)
+    LockstepFunction(sys::System, num_odes::Int; kwargs...)
 
-Construct a LockstepFunction from a ModelingToolkit ODESystem.
+Construct a LockstepFunction from a ModelingToolkit System.
 
 With the v2.0 multi-integrator architecture, each ODE instance gets its own
 standard OrdinaryDiffEq integrator, so MTK features (getu, getp, callbacks)
 work natively without special wrappers.
 
 # Arguments
-- `sys::ODESystem`: The ModelingToolkit ODE system
+- `sys::System`: The ModelingToolkit ODE system (compiled via `mtkcompile`)
 - `num_odes::Int`: Number of parallel ODE instances to solve
 
 # Keyword Arguments
@@ -31,7 +32,7 @@ work natively without special wrappers.
 # Example
 ```julia
 using ModelingToolkit, LockstepODE, OrdinaryDiffEq
-using ModelingToolkit: t_nounits as t, D_nounits as D
+using ModelingToolkit: t_nounits as t, D_nounits as D, mtkcompile, System
 
 @parameters σ=10.0 ρ=28.0 β=8/3
 @variables x(t) y(t) z(t)
@@ -42,7 +43,8 @@ eqs = [
     D(z) ~ x*y - β*z
 ]
 
-@named lorenz = ODESystem(eqs, t)
+lorenz = System(eqs, t; name = :lorenz)
+lorenz = mtkcompile(lorenz)
 
 lf = LockstepFunction(lorenz, 10)
 
@@ -57,7 +59,7 @@ lf_with_cb = LockstepFunction(lorenz, 10; callbacks=cb)
 ```
 """
 function LockstepFunction(
-        sys::ODESystem,
+        sys::System,
         num_odes::Integer;
         callbacks = nothing
 )
@@ -73,7 +75,7 @@ function LockstepFunction(
 end
 
 """
-    transform_parameters(sys::ODESystem, params::Vector{<:AbstractDict})
+    transform_parameters(sys::System, params::Vector{<:AbstractDict})
 
 Transform symbolic parameter specifications to flat vectors for per-ODE parameters.
 
@@ -81,7 +83,7 @@ This is a utility function for users who want to specify different parameters
 for each ODE using symbolic names.
 
 # Arguments
-- `sys::ODESystem`: The MTK system (for canonical parameter ordering)
+- `sys::System`: The MTK system (for canonical parameter ordering)
 - `params::Vector{Dict}`: Per-ODE parameter dictionaries
 
 # Returns
@@ -104,11 +106,10 @@ ps = transform_parameters(sys, params)
 ```
 """
 function transform_parameters(
-        sys::ODESystem,
+        sys::System,
         params::Vector{<:Union{<:AbstractDict, <:AbstractVector{<:Pair}}}
 )
     canonical_params = parameters(sys)
-    defaults_dict = ModelingToolkit.defaults(sys)
 
     transformed = Vector{Vector{Float64}}(undef, length(params))
 
@@ -119,8 +120,8 @@ function transform_parameters(
         for p_sym in canonical_params
             if haskey(param_dict, p_sym)
                 push!(param_vec, Float64(param_dict[p_sym]))
-            elseif haskey(defaults_dict, p_sym)
-                push!(param_vec, Float64(defaults_dict[p_sym]))
+            elseif hasdefault(p_sym)
+                push!(param_vec, Float64(getdefault(p_sym)))
             else
                 error("Missing parameter $p_sym for ODE $i and no default defined")
             end

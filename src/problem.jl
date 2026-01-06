@@ -59,17 +59,15 @@ prob_e = LockstepProblem{Ensemble}(lf, u0s, (0.0, 10.0), p)
 sol_e = solve(prob_e, Tsit5())
 ```
 """
-struct LockstepProblem{M<:LockstepMode, LF, U, T, P, Opts}
+struct LockstepProblem{M <: LockstepMode, LF, U, T, P, Opts}
     lf::LF
     u0s::Vector{U}
     tspan::Tuple{T, T}
     ps::Vector{P}
     opts::Opts
-end
+end#==============================================================================##==============================================================================#
 
-#==============================================================================#
 # Default Constructor (Batched Mode)
-#==============================================================================#
 
 """
     LockstepProblem(lf, u0s, tspan, p=nothing)
@@ -77,10 +75,10 @@ end
 Construct a LockstepProblem with default Batched mode.
 """
 function LockstepProblem(
-    lf::LockstepFunction{F, C},
-    u0s,
-    tspan::Tuple,
-    p = nothing
+        lf::LockstepFunction{F, C},
+        u0s,
+        tspan::Tuple,
+        p = nothing
 ) where {F, C}
     return LockstepProblem{Batched}(lf, u0s, tspan, p)
 end
@@ -95,10 +93,10 @@ Each integrator can have different adaptive timesteps; synchronization is via
 lockstep time tracking (minimum time across all integrators).
 """
 function LockstepProblem{Ensemble}(
-    lf::LockstepFunction{F, C},
-    u0s,
-    tspan::Tuple,
-    p = nothing
+        lf::LockstepFunction{F, C},
+        u0s,
+        tspan::Tuple,
+        p = nothing
 ) where {F, C}
     u0s_normalized = _normalize_u0s(u0s, lf.num_odes, lf.ode_size)
     ps_normalized = _normalize_params(p, lf.num_odes)
@@ -114,11 +112,9 @@ function LockstepProblem{Ensemble}(
         ps_normalized,
         nothing
     )
-end
+end#==============================================================================##==============================================================================#
 
-#==============================================================================#
 # Batched Mode Constructor
-#==============================================================================#
 
 """
     LockstepProblem{Batched}(lf, u0s, tspan, p=nothing; ordering=PerODE(), internal_threading=true)
@@ -133,16 +129,16 @@ RHS evaluation is parallelized across ODEs. Supports GPU acceleration.
 - `internal_threading::Bool=true`: Enable CPU threading for RHS evaluation
 """
 function LockstepProblem{Batched}(
-    lf::LockstepFunction{F, C},
-    u0s,
-    tspan::Tuple,
-    p = nothing;
-    ordering::MemoryOrdering = PerODE(),
-    internal_threading::Bool = true
+        lf::LockstepFunction{F, C},
+        u0s,
+        tspan::Tuple,
+        p = nothing;
+        ordering::MemoryOrdering = PerODE(),
+        internal_threading::Bool = true
 ) where {F, C}
     u0s_normalized = _normalize_u0s(u0s, lf.num_odes, lf.ode_size)
     ps_normalized = _normalize_params(p, lf.num_odes)
-    opts = BatchedOpts(; ordering=ordering, internal_threading=internal_threading)
+    opts = BatchedOpts(; ordering = ordering, internal_threading = internal_threading)
 
     U = eltype(u0s_normalized)
     T = promote_type(typeof(tspan[1]), typeof(tspan[2]))

@@ -2,13 +2,13 @@
     using LockstepODE
     using OrdinaryDiffEq
     using ModelingToolkit
-    using ModelingToolkit: t_nounits as t, D_nounits as D, mtkcompile
+    using ModelingToolkit: t_nounits as t, D_nounits as D, mtkcompile, System
 
     @parameters α
     @variables x(t)
 
     eqs = [D(x) ~ -α * x]
-    @named decay_sys = ODESystem(eqs, t)
+    decay_sys = System(eqs, t; name = :decay_sys)
     decay_sys = mtkcompile(decay_sys)
 
     lf = LockstepFunction(decay_sys, 3)
@@ -23,7 +23,7 @@
     # Verify each solution
     for (i, s) in enumerate(sol.solutions)
         expected = u0s[i][1] * exp(-0.5 * 2.0)
-        @test isapprox(s.u[end][1], expected, rtol=1e-4)
+        @test isapprox(s.u[end][1], expected, rtol = 1e-4)
     end
 end
 
@@ -31,7 +31,7 @@ end
     using LockstepODE
     using OrdinaryDiffEq
     using ModelingToolkit
-    using ModelingToolkit: t_nounits as t, D_nounits as D, mtkcompile
+    using ModelingToolkit: t_nounits as t, D_nounits as D, mtkcompile, System
 
     @parameters ω
     @variables x(t) v(t)
@@ -40,19 +40,19 @@ end
         D(x) ~ v,
         D(v) ~ -ω^2 * x
     ]
-    @named oscillator = ODESystem(eqs, t)
+    oscillator = System(eqs, t; name = :oscillator)
     oscillator = mtkcompile(oscillator)
 
     lf = LockstepFunction(oscillator, 3)
 
     u0s = [[1.0, 0.0], [2.0, 0.0], [0.5, 0.0]]
     prob = LockstepProblem(lf, u0s, (0.0, 2π), 1.0)  # ω = 1
-    sol = solve(prob, Tsit5(); abstol=1e-10, reltol=1e-10)
+    sol = solve(prob, Tsit5(); abstol = 1e-10, reltol = 1e-10)
 
     # After one period, should return to initial
     for (i, s) in enumerate(sol.solutions)
-        @test isapprox(s.u[end][1], u0s[i][1], atol=1e-5)
-        @test isapprox(s.u[end][2], u0s[i][2], atol=1e-5)
+        @test isapprox(s.u[end][1], u0s[i][1], atol = 1e-5)
+        @test isapprox(s.u[end][2], u0s[i][2], atol = 1e-5)
     end
 end
 
@@ -60,13 +60,13 @@ end
     using LockstepODE
     using OrdinaryDiffEq
     using ModelingToolkit
-    using ModelingToolkit: t_nounits as t, D_nounits as D, mtkcompile
+    using ModelingToolkit: t_nounits as t, D_nounits as D, mtkcompile, System
 
     @parameters r
     @variables x(t)
 
     eqs = [D(x) ~ r * x]
-    @named growth = ODESystem(eqs, t)
+    growth = System(eqs, t; name = :growth)
     growth = mtkcompile(growth)
 
     lf = LockstepFunction(growth, 3)
@@ -79,7 +79,7 @@ end
 
     for (i, s) in enumerate(sol.solutions)
         expected = exp(ps[i] * 2.0)
-        @test isapprox(s.u[end][1], expected, rtol=1e-4)
+        @test isapprox(s.u[end][1], expected, rtol = 1e-4)
     end
 
     # Verify they're all different
@@ -91,13 +91,13 @@ end
     using LockstepODE
     using OrdinaryDiffEq
     using ModelingToolkit
-    using ModelingToolkit: t_nounits as t, D_nounits as D, mtkcompile
+    using ModelingToolkit: t_nounits as t, D_nounits as D, mtkcompile, System
 
     @parameters r
     @variables x(t)
 
     eqs = [D(x) ~ r * x]
-    @named growth = ODESystem(eqs, t)
+    growth = System(eqs, t; name = :growth)
     growth = mtkcompile(growth)
 
     reset_count = Ref(0)
@@ -110,7 +110,7 @@ end
         end
     )
 
-    lf = LockstepFunction(growth, 3; callbacks=cb)
+    lf = LockstepFunction(growth, 3; callbacks = cb)
 
     u0s = [[1.0], [1.0], [1.0]]
     ps = [1.0, 1.0, 1.0]
@@ -124,30 +124,28 @@ end
     end
 end
 
-
 @testitem "MTK transform_parameters" begin
     using LockstepODE
     using OrdinaryDiffEq
     using ModelingToolkit
-    using ModelingToolkit: t_nounits as t, D_nounits as D
+    using ModelingToolkit: t_nounits as t, D_nounits as D, mtkcompile, System
 
-    @parameters α β
+    # Define parameters with defaults for v11 compatibility
+    @parameters α=1.0 β=2.0
     @variables x(t)
 
     eqs = [D(x) ~ -α * x + β]
-    @named sys = ODESystem(eqs, t)
-    # Use mtkcompile if available (MTK v10+), otherwise structural_simplify
-    simplify_fn = isdefined(ModelingToolkit, :mtkcompile) ? ModelingToolkit.mtkcompile : ModelingToolkit.structural_simplify
-    sys_simple = simplify_fn(sys)
+    sys = System(eqs, t; name = :sys)
+    sys_compiled = mtkcompile(sys)
 
     params = [
         Dict(α => 1.0, β => 0.5),
-        Dict(α => 2.0, β => 1.0),
+        Dict(α => 2.0, β => 1.0)
     ]
 
     # Get the extension module and use transform_parameters
     ext = Base.get_extension(LockstepODE, :LockstepODEMTKExt)
-    transformed = ext.transform_parameters(sys_simple, params)
+    transformed = ext.transform_parameters(sys_compiled, params)
 
     @test length(transformed) == 2
     @test transformed[1] isa Vector{Float64}

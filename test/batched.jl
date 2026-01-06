@@ -15,12 +15,12 @@
     @test bf.internal_threading == true
 
     # Custom options
-    bf2 = BatchedFunction(lf; ordering=PerIndex(), internal_threading=false)
+    bf2 = BatchedFunction(lf; ordering = PerIndex(), internal_threading = false)
     @test bf2.ordering isa PerIndex
     @test bf2.internal_threading == false
 
     # From BatchedOpts
-    opts = BatchedOpts(ordering=PerIndex(), internal_threading=false)
+    opts = BatchedOpts(ordering = PerIndex(), internal_threading = false)
     bf3 = BatchedFunction(lf, opts)
     @test bf3.ordering isa PerIndex
     @test bf3.internal_threading == false
@@ -47,7 +47,7 @@ end
 
     # With custom options
     prob2 = LockstepProblem{Batched}(lf, u0s, (0.0, 1.0), ps;
-                                      ordering=PerIndex(), internal_threading=false)
+        ordering = PerIndex(), internal_threading = false)
     @test prob2.opts.ordering isa PerIndex
     @test prob2.opts.internal_threading == false
 end
@@ -73,7 +73,7 @@ end
     # Check each ODE decayed correctly (rtol=1e-3 for numerical accuracy)
     for i in 1:5
         expected_final = u0s[i][1] * exp(-ps[i] * 10.0)
-        @test isapprox(sol[i].u[end][1], expected_final, rtol=1e-3)
+        @test isapprox(sol[i].u[end][1], expected_final, rtol = 1e-3)
     end
 end
 
@@ -130,7 +130,7 @@ end
     sol2 = solve!(integ)
 
     # Should get same results (comparing to saved copy)
-    @test isapprox(sol1_final_copy, sol2[1].u[end], rtol=1e-10)
+    @test isapprox(sol1_final_copy, sol2[1].u[end], rtol = 1e-10)
 
     # Reinit with new ICs
     reinit!(integ, [[10.0], [20.0]])
@@ -157,7 +157,7 @@ end
     for i in 1:3
         state_at_5 = sol[i](5.0)
         expected = u0s[i][1] * exp(-0.5 * 5.0)
-        @test isapprox(state_at_5[1], expected, rtol=1e-4)
+        @test isapprox(state_at_5[1], expected, rtol = 1e-4)
     end
 end
 
@@ -182,12 +182,12 @@ end
 
     # Compare final values (rtol=1e-4 accounts for different evaluation strategies)
     for i in 1:3
-        @test isapprox(sol_e[i].u[end], sol_b[i].u[end], rtol=1e-4)
+        @test isapprox(sol_e[i].u[end], sol_b[i].u[end], rtol = 1e-4)
     end
 
     # Compare interpolation
     for i in 1:3
-        @test isapprox(sol_e[i](2.5), sol_b[i](2.5), rtol=1e-4)
+        @test isapprox(sol_e[i](2.5), sol_b[i](2.5), rtol = 1e-4)
     end
 end
 
@@ -203,16 +203,16 @@ end
     u0s = [[1.0, 0.0], [2.0, 0.0], [3.0, 0.0]]
 
     # PerODE ordering (default)
-    prob_pde = LockstepProblem{Batched}(lf, u0s, (0.0, 2π); ordering=PerODE())
+    prob_pde = LockstepProblem{Batched}(lf, u0s, (0.0, 2π); ordering = PerODE())
     sol_pde = solve(prob_pde, Tsit5())
 
     # PerIndex ordering
-    prob_pidx = LockstepProblem{Batched}(lf, u0s, (0.0, 2π); ordering=PerIndex())
+    prob_pidx = LockstepProblem{Batched}(lf, u0s, (0.0, 2π); ordering = PerIndex())
     sol_pidx = solve(prob_pidx, Tsit5())
 
     # Results should be equivalent (ordering is internal detail)
     for i in 1:3
-        @test isapprox(sol_pde[i].u[end], sol_pidx[i].u[end], rtol=1e-6)
+        @test isapprox(sol_pde[i].u[end], sol_pidx[i].u[end], rtol = 1e-6)
     end
 end
 
@@ -227,7 +227,7 @@ end
     cb1 = DiscreteCallback((u, t, i) -> u[1] > 5.0, i -> (i.u[1] = 1.0))
     cb2 = DiscreteCallback((u, t, i) -> u[1] > 10.0, i -> (i.u[1] = 1.0))
 
-    lf = LockstepFunction(growth!, 1, 2; callbacks=[cb1, cb2])
+    lf = LockstepFunction(growth!, 1, 2; callbacks = [cb1, cb2])
     u0s = [[1.0], [1.0]]
     ps = [1.0, 0.5]
 
@@ -253,7 +253,7 @@ end
     u0s = [[1.0], [2.0], [3.0]]
 
     prob = LockstepProblem{Batched}(lf, u0s, (0.0, 2.0))
-    sol = solve(prob, Tsit5(); saveat=0.5)
+    sol = solve(prob, Tsit5(); saveat = 0.5)
 
     # Check accessors
     sub = sol[1]
@@ -280,7 +280,7 @@ end
     end
 
     # Interpolation
-    @test isapprox(sub(1.0)[1], exp(-0.5), rtol=1e-4)
+    @test isapprox(sub(1.0)[1], exp(-0.5), rtol = 1e-4)
 end
 
 @testitem "Batched mode internal_threading=false" begin
@@ -294,13 +294,13 @@ end
     u0s = [[1.0], [2.0], [3.0]]
 
     # Disable internal threading
-    prob = LockstepProblem{Batched}(lf, u0s, (0.0, 1.0); internal_threading=false)
+    prob = LockstepProblem{Batched}(lf, u0s, (0.0, 1.0); internal_threading = false)
     sol = solve(prob, Tsit5())
 
     # Should still work correctly
     @test length(sol) == 3
     for i in 1:3
         expected = u0s[i][1] * exp(-0.5)
-        @test isapprox(sol[i].u[end][1], expected, rtol=1e-4)
+        @test isapprox(sol[i].u[end][1], expected, rtol = 1e-4)
     end
 end

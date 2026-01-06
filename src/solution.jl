@@ -3,11 +3,9 @@ Solution accessors and utilities for LockstepODE v2.0
 
 Supports both Ensemble mode (vector of ODESolutions) and Batched mode
 (vector of BatchedSubSolution wrappers with interpolation support).
-"""
+"""#==============================================================================##==============================================================================#
 
-#==============================================================================#
 # BatchedSubSolution - Interpolatable wrapper for Batched mode
-#==============================================================================#
 
 """
     BatchedSubSolution{S, BF}
@@ -106,11 +104,9 @@ end
 function Base.show(io::IO, sol::BatchedSubSolution)
     n = length(sol.parent.u)
     print(io, "BatchedSubSolution(ODE $(sol.ode_idx), $n timepoints)")
-end
+end#==============================================================================##==============================================================================#
 
-#==============================================================================#
 # LockstepSolution accessors
-#==============================================================================#
 
 """
     getindex(sol::LockstepSolution, i::Int)

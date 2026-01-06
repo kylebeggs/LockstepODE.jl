@@ -5,11 +5,9 @@ Multi-integrator architecture: N independent ODEs solved in parallel.
 Supports both Ensemble mode (N independent integrators) and Batched mode (single batched integrator).
 """
 
-using SciMLBase: ReturnCode, ODEFunction
+using SciMLBase: ReturnCode, ODEFunction#==============================================================================##==============================================================================#
 
-#==============================================================================#
 # Mode and Ordering Types
-#==============================================================================#
 
 """
     LockstepMode
@@ -86,11 +84,9 @@ For 2 ODEs with 3 variables each:
 May provide better cache locality for operations that access the same
 variable across all ODEs.
 """
-struct PerIndex <: MemoryOrdering end
+struct PerIndex <: MemoryOrdering end#==============================================================================##==============================================================================#
 
-#==============================================================================#
 # Batched Mode Options
-#==============================================================================#
 
 """
     BatchedOpts{O<:MemoryOrdering}
@@ -101,18 +97,16 @@ Options for Batched mode execution.
 - `ordering::O`: Memory layout (PerODE or PerIndex)
 - `internal_threading::Bool`: Enable CPU threading for RHS evaluation
 """
-struct BatchedOpts{O<:MemoryOrdering}
+struct BatchedOpts{O <: MemoryOrdering}
     ordering::O
     internal_threading::Bool
 end
 
-function BatchedOpts(; ordering::MemoryOrdering=PerODE(), internal_threading::Bool=true)
+function BatchedOpts(; ordering::MemoryOrdering = PerODE(), internal_threading::Bool = true)
     return BatchedOpts(ordering, internal_threading)
-end
+end#==============================================================================##==============================================================================#
 
-#==============================================================================#
 # LockstepFunction
-#==============================================================================#
 
 """
     LockstepFunction{F, C}
@@ -150,20 +144,18 @@ struct LockstepFunction{F, C}
 end
 
 function LockstepFunction(
-    f::F,
-    ode_size::Integer,
-    num_odes::Integer;
-    callbacks::C=nothing
+        f::F,
+        ode_size::Integer,
+        num_odes::Integer;
+        callbacks::C = nothing
 ) where {F, C}
     num_odes > 0 || throw(ArgumentError("num_odes must be positive, got $num_odes"))
     ode_size > 0 || throw(ArgumentError("ode_size must be positive, got $ode_size"))
 
     return LockstepFunction{F, C}(f, Int(num_odes), Int(ode_size), callbacks)
-end
+end#==============================================================================##==============================================================================#
 
-#==============================================================================#
 # Parameter Extraction
-#==============================================================================#
 
 """
     _get_ode_parameters(p, i::Int, num_odes::Int)

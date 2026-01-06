@@ -27,7 +27,7 @@ cb3 = DiscreteCallback(
     integrator -> (callback_counts[3] += 1; integrator.u[1] = 1.0)
 )
 
-lf = LockstepFunction(exponential_growth!, 1, 3; callbacks=[cb1, cb2, cb3])
+lf = LockstepFunction(exponential_growth!, 1, 3; callbacks = [cb1, cb2, cb3])
 u0s = [[1.0], [1.0], [1.0]]
 ps = [1.0, 1.0, 1.0]
 prob = LockstepProblem(lf, u0s, (0.0, 5.0), ps)
@@ -45,7 +45,7 @@ shared_cb = DiscreteCallback(
     integrator -> (shared_count[] += 1; integrator.u[1] = 1.0)
 )
 
-lf_shared = LockstepFunction(exponential_growth!, 1, 3; callbacks=shared_cb)
+lf_shared = LockstepFunction(exponential_growth!, 1, 3; callbacks = shared_cb)
 prob_shared = LockstepProblem(lf_shared, u0s, (0.0, 5.0), ps)
 sol_shared = solve(prob_shared, Tsit5())
 
@@ -62,10 +62,11 @@ callback_logs = [Float64[] for _ in 1:3]
 
 callbacks_varied = [DiscreteCallback(
                         (u, t, integrator) -> u[1] > thresholds[i],
-                        integrator -> (push!(callback_logs[i], integrator.t); integrator.u[1] = 1.0)
+                        integrator -> (
+                            push!(callback_logs[i], integrator.t); integrator.u[1] = 1.0)
                     ) for i in 1:3]
 
-lf_varied = LockstepFunction(exponential_growth!, 1, 3; callbacks=callbacks_varied)
+lf_varied = LockstepFunction(exponential_growth!, 1, 3; callbacks = callbacks_varied)
 prob_varied = LockstepProblem(lf_varied, u0s, (0.0, 5.0), growth_rates)
 sol_varied = solve(prob_varied, Tsit5())
 

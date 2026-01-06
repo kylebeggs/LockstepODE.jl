@@ -27,7 +27,7 @@
         end
     )
 
-    lf = LockstepFunction(growth!, 1, 2; callbacks=[cb1, cb2])
+    lf = LockstepFunction(growth!, 1, 2; callbacks = [cb1, cb2])
     u0s = [[1.0], [1.0]]
     ps = [1.0, 1.0]  # Same growth rate
 
@@ -58,7 +58,7 @@ end
         integrator -> (integrator.u[1] = 0.1)
     )
 
-    lf = LockstepFunction(decay!, 1, 3; callbacks=floor_cb)
+    lf = LockstepFunction(decay!, 1, 3; callbacks = floor_cb)
     u0s = [[2.0], [1.0], [0.5]]
 
     prob = LockstepProblem(lf, u0s, (0.0, 10.0))
@@ -86,7 +86,7 @@ end
         integrator -> (integrator.u[2] = -0.8 * integrator.u[2])  # Reverse velocity with damping
     )
 
-    lf = LockstepFunction(falling_ball!, 2, 2; callbacks=bounce_cb)
+    lf = LockstepFunction(falling_ball!, 2, 2; callbacks = bounce_cb)
     u0s = [[2.0, 0.0], [3.0, 0.0]]
 
     prob = LockstepProblem(lf, u0s, (0.0, 3.0))

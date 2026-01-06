@@ -9,11 +9,9 @@ using OrdinaryDiffEq: ODEProblem, ODESolution, CallbackSet
 using OrdinaryDiffEq: init as ode_init, solve as ode_solve, solve! as ode_solve!
 using SciMLBase: ReturnCode
 using OhMyThreads: tforeach
-import CommonSolve: solve!, init, solve
+import CommonSolve: solve!, init, solve#==============================================================================##==============================================================================#
 
-#==============================================================================#
 # Ensemble Mode: init
-#==============================================================================#
 
 """
     init(prob::LockstepProblem{Ensemble}, alg; kwargs...)
@@ -32,10 +30,10 @@ sol = solve!(integ)
 ```
 """
 function CommonSolve.init(
-    prob::LockstepProblem{Ensemble, LF, U, T, P, Opts},
-    alg::A;
-    save_everystep::Bool = true,
-    kwargs...
+        prob::LockstepProblem{Ensemble, LF, U, T, P, Opts},
+        alg::A;
+        save_everystep::Bool = true,
+        kwargs...
 ) where {LF, U, T, P, Opts, A}
     lf = prob.lf
 
@@ -65,11 +63,9 @@ function CommonSolve.init(
         sign(tf - t0),
         ReturnCode.Default
     )
-end
+end#==============================================================================##==============================================================================#
 
-#==============================================================================#
 # Ensemble Mode: solve
-#==============================================================================#
 
 """
     solve(prob::LockstepProblem{Ensemble}, alg; kwargs...)
@@ -83,17 +79,15 @@ sol = solve(prob, Tsit5())
 ```
 """
 function CommonSolve.solve(
-    prob::LockstepProblem{Ensemble},
-    alg;
-    kwargs...
+        prob::LockstepProblem{Ensemble},
+        alg;
+        kwargs...
 )::LockstepSolution
     integ = init(prob, alg; kwargs...)
     return solve!(integ)
-end
+end#==============================================================================##==============================================================================#
 
-#==============================================================================#
 # Ensemble Mode: solve!
-#==============================================================================#
 
 """
     solve!(integ::EnsembleLockstepIntegrator)
@@ -134,11 +128,9 @@ function _finalize_ensemble_solution(integ::EnsembleLockstepIntegrator)::Lockste
     end
 
     return LockstepSolution(solutions, retcode)
-end
+end#==============================================================================##==============================================================================#
 
-#==============================================================================#
 # Batched Mode: init
-#==============================================================================#
 
 """
     init(prob::LockstepProblem{Batched}, alg; kwargs...)
@@ -157,10 +149,10 @@ sol = solve!(integ)
 ```
 """
 function CommonSolve.init(
-    prob::LockstepProblem{Batched, LF, U, T, P, Opts},
-    alg;
-    save_everystep::Bool = true,
-    kwargs...
+        prob::LockstepProblem{Batched, LF, U, T, P, Opts},
+        alg;
+        save_everystep::Bool = true,
+        kwargs...
 ) where {LF, U, T, P, Opts}
     lf = prob.lf
     opts = prob.opts
@@ -185,17 +177,15 @@ function CommonSolve.init(
     end
 
     # Create single batched ODEProblem
-    ode_prob = ODEProblem(bf, u0_batched, prob.tspan, prob.ps; callback=merged_cb)
+    ode_prob = ODEProblem(bf, u0_batched, prob.tspan, prob.ps; callback = merged_cb)
 
     # Initialize the underlying integrator
     raw_integ = ode_init(ode_prob, alg; save_everystep, kwargs...)
 
     return BatchedLockstepIntegrator(raw_integ, lf, bf, opts)
-end
+end#==============================================================================##==============================================================================#
 
-#==============================================================================#
 # Batched Mode: solve
-#==============================================================================#
 
 """
     solve(prob::LockstepProblem{Batched}, alg; kwargs...)
@@ -209,17 +199,15 @@ sol = solve(prob, Tsit5())
 ```
 """
 function CommonSolve.solve(
-    prob::LockstepProblem{Batched},
-    alg;
-    kwargs...
+        prob::LockstepProblem{Batched},
+        alg;
+        kwargs...
 )::LockstepSolution
     integ = init(prob, alg; kwargs...)
     return solve!(integ)
-end
+end#==============================================================================##==============================================================================#
 
-#==============================================================================#
 # Batched Mode: solve!
-#==============================================================================#
 
 """
     solve!(integ::BatchedLockstepIntegrator)
@@ -249,17 +237,15 @@ function _finalize_batched_solution(integ::BatchedLockstepIntegrator)::LockstepS
     solutions = [BatchedSubSolution(raw_sol, bf, i) for i in 1:lf.num_odes]
 
     return LockstepSolution(solutions, raw_sol.retcode)
-end
+end#==============================================================================##==============================================================================#
 
-#==============================================================================#
 # Helper: create individual ODEProblems (Ensemble mode only)
-#==============================================================================#
 
 function _create_individual_problems(
-    lf::LockstepFunction,
-    u0s::Vector,
-    tspan::Tuple,
-    ps::Vector
+        lf::LockstepFunction,
+        u0s::Vector,
+        tspan::Tuple,
+        ps::Vector
 )
     callbacks_normalized = _normalize_callbacks(lf.callbacks, lf.num_odes)
 

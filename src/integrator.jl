@@ -9,25 +9,21 @@ Two modes:
 using SciMLBase: ReturnCode
 using SciMLBase: step! as sciml_step!, reinit! as sciml_reinit!
 import SciMLBase: step!, reinit!
-using OhMyThreads: tforeach
+using OhMyThreads: tforeach#==============================================================================##==============================================================================#
 
-#==============================================================================#
 # Abstract Type
-#==============================================================================#
 
 """
     AbstractLockstepIntegrator{M}
 
 Abstract type for lockstep integrators, parametric on mode.
 """
-abstract type AbstractLockstepIntegrator{M<:LockstepMode} end
+abstract type AbstractLockstepIntegrator{M <: LockstepMode} end
 
 # Type alias for backward compatibility
-const LockstepIntegrator = AbstractLockstepIntegrator
+const LockstepIntegrator = AbstractLockstepIntegrator#==============================================================================##==============================================================================#
 
-#==============================================================================#
 # Ensemble Mode Integrator
-#==============================================================================#
 
 """
     EnsembleLockstepIntegrator{A, I, LF, T}
@@ -50,7 +46,8 @@ Implements CommonSolve step!/solve!/reinit! interface.
 - `integ.t`: Returns current lockstep time
 - `length(integ)`: Number of ODEs
 """
-mutable struct EnsembleLockstepIntegrator{A, I, LF, T} <: AbstractLockstepIntegrator{Ensemble}
+mutable struct EnsembleLockstepIntegrator{A, I, LF, T} <:
+               AbstractLockstepIntegrator{Ensemble}
     integrators::Vector{I}
     lf::LF
     alg::A
@@ -58,11 +55,9 @@ mutable struct EnsembleLockstepIntegrator{A, I, LF, T} <: AbstractLockstepIntegr
     tspan::Tuple{T, T}
     tdir::Int
     retcode::ReturnCode.T
-end
+end#==============================================================================##==============================================================================#
 
-#==============================================================================#
 # Batched Mode Integrator
-#==============================================================================#
 
 """
     BatchedLockstepIntegrator{I, LF, BF, Opts}
@@ -82,16 +77,15 @@ Provides uniform interface for Batched mode solving.
 - `integ.t`: Returns current time
 - `length(integ)`: Number of ODEs
 """
-mutable struct BatchedLockstepIntegrator{I, LF, BF, Opts} <: AbstractLockstepIntegrator{Batched}
+mutable struct BatchedLockstepIntegrator{I, LF, BF, Opts} <:
+               AbstractLockstepIntegrator{Batched}
     integrator::I
     lf::LF
     bf::BF
     opts::Opts
-end
+end#==============================================================================##==============================================================================#
 
-#==============================================================================#
 # Ensemble Mode Property Accessors
-#==============================================================================#
 
 function Base.getproperty(integ::EnsembleLockstepIntegrator, sym::Symbol)
     if sym === :u
@@ -136,11 +130,9 @@ Base.lastindex(integ::EnsembleLockstepIntegrator) = length(integ.integrators)
 
 # Iteration
 Base.iterate(integ::EnsembleLockstepIntegrator) = iterate(integ.integrators)
-Base.iterate(integ::EnsembleLockstepIntegrator, state) = iterate(integ.integrators, state)
+Base.iterate(integ::EnsembleLockstepIntegrator, state) = iterate(integ.integrators, state)#==============================================================================##==============================================================================#
 
-#==============================================================================#
 # Batched Mode Property Accessors
-#==============================================================================#
 
 function Base.getproperty(integ::BatchedLockstepIntegrator, sym::Symbol)
     if sym === :u
@@ -174,8 +166,9 @@ function Base.propertynames(::BatchedLockstepIntegrator)
 end
 
 # Indexing - returns SubIntegrator for per-ODE access
-Base.getindex(integ::BatchedLockstepIntegrator, i::Int) =
+function Base.getindex(integ::BatchedLockstepIntegrator, i::Int)
     SubIntegrator(integ.integrator, integ.bf, i)
+end
 Base.length(integ::BatchedLockstepIntegrator) = integ.lf.num_odes
 Base.eachindex(integ::BatchedLockstepIntegrator) = 1:integ.lf.num_odes
 Base.firstindex(::BatchedLockstepIntegrator) = 1
@@ -189,11 +182,9 @@ end
 function Base.iterate(integ::BatchedLockstepIntegrator, state::Int)
     next_state = state + 1
     return next_state <= integ.lf.num_odes ? (integ[next_state], next_state) : nothing
-end
+end#==============================================================================##==============================================================================#
 
-#==============================================================================#
 # Ensemble Mode step! implementations
-#==============================================================================#
 
 """
     step!(integ::EnsembleLockstepIntegrator)
@@ -257,11 +248,9 @@ function update_retcode!(integ::EnsembleLockstepIntegrator)
         end
     end
     return nothing
-end
+end#==============================================================================##==============================================================================#
 
-#==============================================================================#
 # Batched Mode step! implementations
-#==============================================================================#
 
 """
     step!(integ::BatchedLockstepIntegrator)
@@ -281,11 +270,9 @@ Advance the batched integrator by time `dt`.
 function step!(integ::BatchedLockstepIntegrator, dt, stop_at_tdt::Bool = false)
     sciml_step!(integ.integrator, dt, stop_at_tdt)
     return nothing
-end
+end#==============================================================================##==============================================================================#
 
-#==============================================================================#
 # Ensemble Mode reinit! implementation
-#==============================================================================#
 
 """
     reinit!(integ::EnsembleLockstepIntegrator, u0s=nothing; t0=nothing, tf=nothing, erase_sol=true, kwargs...)
@@ -299,12 +286,12 @@ Reinitialize the Ensemble integrator, optionally with new initial conditions.
 - `erase_sol`: Whether to erase accumulated solution data
 """
 function reinit!(
-    integ::EnsembleLockstepIntegrator{A, I, LF, T},
-    u0s = nothing;
-    t0 = nothing,
-    tf = nothing,
-    erase_sol::Bool = true,
-    kwargs...
+        integ::EnsembleLockstepIntegrator{A, I, LF, T},
+        u0s = nothing;
+        t0 = nothing,
+        tf = nothing,
+        erase_sol::Bool = true,
+        kwargs...
 ) where {A, I, LF, T}
     lf = integ.lf
     new_t0 = t0 === nothing ? integ.tspan[1] : T(t0)
@@ -335,11 +322,9 @@ function reinit!(
     integ.retcode = ReturnCode.Default
 
     return nothing
-end
+end#==============================================================================##==============================================================================#
 
-#==============================================================================#
 # Batched Mode reinit! implementation
-#==============================================================================#
 
 """
     reinit!(integ::BatchedLockstepIntegrator, u0s=nothing; t0=nothing, tf=nothing, erase_sol=true, kwargs...)
@@ -353,12 +338,12 @@ Reinitialize the Batched integrator, optionally with new initial conditions.
 - `erase_sol`: Whether to erase accumulated solution data
 """
 function reinit!(
-    integ::BatchedLockstepIntegrator,
-    u0s = nothing;
-    t0 = nothing,
-    tf = nothing,
-    erase_sol::Bool = true,
-    kwargs...
+        integ::BatchedLockstepIntegrator,
+        u0s = nothing;
+        t0 = nothing,
+        tf = nothing,
+        erase_sol::Bool = true,
+        kwargs...
 )
     lf = integ.lf
     raw_integ = integ.integrator
@@ -383,4 +368,3 @@ function reinit!(
 
     return nothing
 end
-

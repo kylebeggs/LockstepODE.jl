@@ -162,7 +162,7 @@ end
     # Check solution accuracy
     for (i, u0) in enumerate([1.0, 2.0, 3.0])
         expected = u0 * exp(-0.1)
-        @test isapprox(integ[i].u[1], expected, rtol=1e-4)
+        @test isapprox(integ[i].u[1], expected, rtol = 1e-4)
     end
 end
 
@@ -219,4 +219,3 @@ end
     @test integ[2].u[1] ≈ 6.0
     @test integ[3].u[1] ≈ 7.0
 end
-

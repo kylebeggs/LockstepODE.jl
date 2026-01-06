@@ -5,11 +5,9 @@ Provides BatchedFunction wrapper, SubIntegrator for callbacks, and parallel RHS 
 """
 
 using OhMyThreads: tforeach
-using OrdinaryDiffEq: DiscreteCallback, ContinuousCallback, CallbackSet
+using OrdinaryDiffEq: DiscreteCallback, ContinuousCallback, CallbackSet#==============================================================================##==============================================================================#
 
-#==============================================================================#
 # BatchedFunction - Callable wrapper for batched ODE solving
-#==============================================================================#
 
 """
     BatchedFunction{O<:MemoryOrdering, F, C}
@@ -34,34 +32,32 @@ u0_batched = vcat([[1.0, 0.0, 0.0] for _ in 1:100]...)
 prob = ODEProblem(bf, u0_batched, (0.0, 10.0), p)
 ```
 """
-struct BatchedFunction{O<:MemoryOrdering, F, C}
+struct BatchedFunction{O <: MemoryOrdering, F, C}
     lf::LockstepFunction{F, C}
     ordering::O
     internal_threading::Bool
 end
 
 function BatchedFunction(
-    lf::LockstepFunction{F, C};
-    ordering::MemoryOrdering=PerODE(),
-    internal_threading::Bool=true
+        lf::LockstepFunction{F, C};
+        ordering::MemoryOrdering = PerODE(),
+        internal_threading::Bool = true
 ) where {F, C}
     return BatchedFunction{typeof(ordering), F, C}(lf, ordering, internal_threading)
 end
 
 function BatchedFunction(
-    lf::LockstepFunction{F, C},
-    opts::BatchedOpts{O}
+        lf::LockstepFunction{F, C},
+        opts::BatchedOpts{O}
 ) where {F, C, O}
     return BatchedFunction{O, F, C}(lf, opts.ordering, opts.internal_threading)
 end
 
 # Convenience accessors
 num_odes(bf::BatchedFunction) = bf.lf.num_odes
-ode_size(bf::BatchedFunction) = bf.lf.ode_size
+ode_size(bf::BatchedFunction) = bf.lf.ode_size#==============================================================================##==============================================================================#
 
-#==============================================================================#
 # Index Calculation - dispatched on memory ordering
-#==============================================================================#
 
 """
     _get_idxs(bf::BatchedFunction, i::Int) -> UnitRange/StepRange
@@ -81,11 +77,9 @@ end
     N = bf.lf.num_odes
     M = bf.lf.ode_size
     return i:N:((M - 1) * N + i)
-end
+end#==============================================================================##==============================================================================#
 
-#==============================================================================#
 # Callback Extraction
-#==============================================================================#
 
 # Note: _get_ode_parameters is defined in types.jl
 
@@ -99,11 +93,9 @@ Extract callback for the i-th ODE from callback vector.
 end
 
 @inline _get_ode_callback(callbacks, ::Int, ::Int) = callbacks
-@inline _get_ode_callback(::Nothing, ::Int, ::Int) = nothing
+@inline _get_ode_callback(::Nothing, ::Int, ::Int) = nothing#==============================================================================##==============================================================================#
 
-#==============================================================================#
 # ODE Kernel - Core evaluation for single ODE
-#==============================================================================#
 
 """
     ode_kernel!(i, bf::BatchedFunction, du, u, p, t)
@@ -120,11 +112,9 @@ Marked `@inline` for use in GPU extensions via KernelAbstractions.jl.
     p_i = _get_ode_parameters(p, i, bf.lf.num_odes)
     bf.lf.f(du_i, u_i, p_i, t)
     return nothing
-end
+end#==============================================================================##==============================================================================#
 
-#==============================================================================#
 # Callable Interface
-#==============================================================================#
 
 """
     (bf::BatchedFunction)(du, u, p, t)
@@ -142,11 +132,9 @@ function (bf::BatchedFunction)(du, u, p, t)
         foreach(i -> ode_kernel!(i, bf, du, u, p, t), 1:N)
     end
     return nothing
-end
+end#==============================================================================##==============================================================================#
 
-#==============================================================================#
 # SubIntegrator - Per-ODE view for callbacks
-#==============================================================================#
 
 """
     SubIntegrator{I, BF, U, P}
@@ -196,11 +184,9 @@ function Base.setproperty!(sub::SubIntegrator, sym::Symbol, val)
     else
         return setproperty!(getfield(sub, :parent), sym, val)
     end
-end
+end#==============================================================================##==============================================================================#
 
-#==============================================================================#
 # Callback Wrapping
-#==============================================================================#
 
 """
     create_lockstep_callbacks(bf::BatchedFunction)
@@ -222,11 +208,19 @@ function create_lockstep_callbacks(bf::BatchedFunction)
         cb = _get_ode_callback(lf.callbacks, i, lf.num_odes)
         isnothing(cb) && continue
 
-        if cb isa DiscreteCallback || cb isa ContinuousCallback
+        if cb isa CallbackSet
+            # Flatten CallbackSet into individual callbacks
+            for discrete_cb in cb.discrete_callbacks
+                push!(wrapped_callbacks, _wrap_callback(discrete_cb, bf, i))
+            end
+            for continuous_cb in cb.continuous_callbacks
+                push!(wrapped_callbacks, _wrap_callback(continuous_cb, bf, i))
+            end
+        elseif cb isa DiscreteCallback || cb isa ContinuousCallback
             push!(wrapped_callbacks, _wrap_callback(cb, bf, i))
         else
             error("Unsupported callback type: $(typeof(cb)). " *
-                  "Only DiscreteCallback and ContinuousCallback are supported.")
+                  "Only DiscreteCallback, ContinuousCallback, and CallbackSet are supported.")
         end
     end
 
@@ -259,7 +253,7 @@ function _wrap_callback(cb::DiscreteCallback, bf::BatchedFunction, ode_idx::Int)
     return DiscreteCallback(
         _wrap_condition(bf, ode_idx, cb.condition),
         _wrap_affect(bf, ode_idx, cb.affect!);
-        save_positions=cb.save_positions
+        save_positions = cb.save_positions
     )
 end
 
@@ -270,13 +264,11 @@ function _wrap_callback(cb::ContinuousCallback, bf::BatchedFunction, ode_idx::In
         _wrap_condition(bf, ode_idx, cb.condition),
         _wrap_affect(bf, ode_idx, cb.affect!),
         wrapped_affect_neg!;
-        save_positions=cb.save_positions
+        save_positions = cb.save_positions
     )
-end
+end#==============================================================================##==============================================================================#
 
-#==============================================================================#
 # Batched Initial Conditions
-#==============================================================================#
 
 """
     batch_u0s(u0s::Vector{<:AbstractVector}, ::PerODE)

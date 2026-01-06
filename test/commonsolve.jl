@@ -21,7 +21,7 @@
     for (i, s) in enumerate(sol.solutions)
         u0 = u0s[i][1]
         expected_final = u0 * exp(-1.0)
-        @test isapprox(s.u[end][1], expected_final, rtol=1e-4)
+        @test isapprox(s.u[end][1], expected_final, rtol = 1e-4)
     end
 end
 
@@ -43,7 +43,7 @@ end
     for (i, s) in enumerate(sol.solutions)
         u0 = u0s[i][1]
         expected_final = u0 * exp(-0.5 * 2.0)
-        @test isapprox(s.u[end][1], expected_final, rtol=1e-4)
+        @test isapprox(s.u[end][1], expected_final, rtol = 1e-4)
     end
 end
 
@@ -64,7 +64,7 @@ end
 
     for (i, s) in enumerate(sol.solutions)
         expected_final = exp(-ps[i] * 1.0)
-        @test isapprox(s.u[end][1], expected_final, rtol=1e-4)
+        @test isapprox(s.u[end][1], expected_final, rtol = 1e-4)
     end
 end
 
@@ -133,7 +133,7 @@ end
     for (i, s) in enumerate(sol.solutions)
         u0 = u0s[i][1]
         expected_final = u0 * exp(-1.0)
-        @test isapprox(s.u[end][1], expected_final, rtol=1e-4)
+        @test isapprox(s.u[end][1], expected_final, rtol = 1e-4)
     end
 end
 
@@ -151,12 +151,12 @@ end
     # Two oscillators with different initial conditions
     u0s = [[1.0, 0.0], [0.0, 1.0]]
     prob = LockstepProblem(lf, u0s, (0.0, 2π))
-    sol = solve(prob, Tsit5(); abstol=1e-10, reltol=1e-10)
+    sol = solve(prob, Tsit5(); abstol = 1e-10, reltol = 1e-10)
 
     # After one period, should return to initial conditions
     for (i, s) in enumerate(sol.solutions)
-        @test isapprox(s.u[end][1], u0s[i][1], atol=1e-6)
-        @test isapprox(s.u[end][2], u0s[i][2], atol=1e-6)
+        @test isapprox(s.u[end][1], u0s[i][1], atol = 1e-6)
+        @test isapprox(s.u[end][2], u0s[i][2], atol = 1e-6)
     end
 end
 
@@ -177,7 +177,7 @@ end
 
     expected_final = exp(-1.0)
     for s in sol.solutions
-        @test isapprox(s.u[end][1], expected_final, rtol=1e-4)
+        @test isapprox(s.u[end][1], expected_final, rtol = 1e-4)
     end
 end
 
@@ -194,12 +194,12 @@ end
     prob = LockstepProblem(lf, u0s, (0.0, 1.0))
 
     # Test that kwargs like abstol/reltol are passed through
-    sol = solve(prob, Tsit5(); abstol=1e-12, reltol=1e-12)
+    sol = solve(prob, Tsit5(); abstol = 1e-12, reltol = 1e-12)
 
     # Should have higher accuracy
     for (i, s) in enumerate(sol.solutions)
         u0 = u0s[i][1]
         expected_final = u0 * exp(-1.0)
-        @test isapprox(s.u[end][1], expected_final, rtol=1e-10)
+        @test isapprox(s.u[end][1], expected_final, rtol = 1e-10)
     end
 end

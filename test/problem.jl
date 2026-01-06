@@ -78,4 +78,3 @@ end
     # Wrong u0 size
     @test_throws ArgumentError LockstepProblem(lf, [[1.0, 2.0], [1.0, 2.0], [1.0, 2.0]], tspan)
 end
-

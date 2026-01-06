@@ -32,35 +32,35 @@ const V2_SRC = joinpath(V2_PATH, "src")
 
 # Load main branch components directly
 module LockstepMain
-    using OrdinaryDiffEq
-    using OhMyThreads
-    using OrdinaryDiffEq: DiscreteCallback, ContinuousCallback, CallbackSet
-    import OrdinaryDiffEq: ODEProblem
+using OrdinaryDiffEq
+using OhMyThreads
+using OrdinaryDiffEq: DiscreteCallback, ContinuousCallback, CallbackSet
+import OrdinaryDiffEq: ODEProblem
 
-    # Access paths from parent module
-    const _main_src = Main.MAIN_SRC
+# Access paths from parent module
+const _main_src = Main.MAIN_SRC
 
-    include(joinpath(_main_src, "core.jl"))
-    include(joinpath(_main_src, "utils.jl"))
+include(joinpath(_main_src, "core.jl"))
+include(joinpath(_main_src, "utils.jl"))
 end
 
 # Load v2.0 branch components
 module LockstepV2
-    using SciMLBase: ReturnCode, ODEFunction
-    using OrdinaryDiffEq: ODEProblem, ODESolution
-    using OrdinaryDiffEq: init as ode_init, solve as ode_solve
-    using OrdinaryDiffEq: solve! as ode_solve!
-    using CommonSolve
-    import CommonSolve: solve!, init, solve
+using SciMLBase: ReturnCode, ODEFunction
+using OrdinaryDiffEq: ODEProblem, ODESolution
+using OrdinaryDiffEq: init as ode_init, solve as ode_solve
+using OrdinaryDiffEq: solve! as ode_solve!
+using CommonSolve
+import CommonSolve: solve!, init, solve
 
-    # Access paths from parent module
-    const _v2_src = Main.V2_SRC
+# Access paths from parent module
+const _v2_src = Main.V2_SRC
 
-    include(joinpath(_v2_src, "types.jl"))
-    include(joinpath(_v2_src, "problem.jl"))
-    include(joinpath(_v2_src, "integrator.jl"))
-    include(joinpath(_v2_src, "commonsolve.jl"))
-    include(joinpath(_v2_src, "solution.jl"))
+include(joinpath(_v2_src, "types.jl"))
+include(joinpath(_v2_src, "problem.jl"))
+include(joinpath(_v2_src, "integrator.jl"))
+include(joinpath(_v2_src, "commonsolve.jl"))
+include(joinpath(_v2_src, "solution.jl"))
 end
 
 # ============================================================================
@@ -114,9 +114,9 @@ const ALG = Tsit5()
 """
 Benchmark main branch (single batched integrator)
 """
-function benchmark_main(f!, ode_size::Int, num_odes::Int, u0_single, p; warmup=true)
+function benchmark_main(f!, ode_size::Int, num_odes::Int, u0_single, p; warmup = true)
     # Create LockstepFunction (main branch API)
-    lf = LockstepMain.LockstepFunction(f!, ode_size, num_odes; internal_threading=true)
+    lf = LockstepMain.LockstepFunction(f!, ode_size, num_odes; internal_threading = true)
 
     # Batch initial conditions
     u0_batched = LockstepMain.batch_initial_conditions(u0_single, num_odes, ode_size)
@@ -125,7 +125,7 @@ function benchmark_main(f!, ode_size::Int, num_odes::Int, u0_single, p; warmup=t
     p_batched = p isa Nothing ? nothing : (p isa Number ? p : fill(p, num_odes))
 
     # Create problem
-    prob = LockstepMain.ODEProblem(lf, u0_batched, TSPAN, p_batched; save_everystep=false)
+    prob = LockstepMain.ODEProblem(lf, u0_batched, TSPAN, p_batched; save_everystep = false)
 
     # Warmup
     if warmup
@@ -140,7 +140,7 @@ end
 """
 Benchmark v2.0 branch (multi-integrator / Ensemble mode)
 """
-function benchmark_v2(f!, ode_size::Int, num_odes::Int, u0_single, p; warmup=true)
+function benchmark_v2(f!, ode_size::Int, num_odes::Int, u0_single, p; warmup = true)
     # Create LockstepFunction (v2.0 API)
     lf = LockstepV2.LockstepFunction(f!, ode_size, num_odes)
 
@@ -148,7 +148,8 @@ function benchmark_v2(f!, ode_size::Int, num_odes::Int, u0_single, p; warmup=tru
     u0s = [copy(u0_single) for _ in 1:num_odes]
 
     # Parameters: v2.0 expects vector of per-ODE parameters
-    ps = p isa Nothing ? fill(nothing, num_odes) : (p isa Number ? fill(p, num_odes) : fill(p, num_odes))
+    ps = p isa Nothing ? fill(nothing, num_odes) :
+         (p isa Number ? fill(p, num_odes) : fill(p, num_odes))
 
     # Create problem - explicitly use Ensemble mode for multi-integrator comparison
     prob = LockstepV2.LockstepProblem{LockstepV2.Ensemble}(lf, u0s, TSPAN, ps)
@@ -223,19 +224,20 @@ function print_cpu_table(results::Vector)
     println("CPU Benchmarks")
     println("-" ^ 100)
     @printf("%-6s %-8s %15s %15s %12s %12s %10s\n",
-            "M", "N", "main (time)", "v2.0 (time)", "main (mem)", "v2.0 (mem)", "speedup")
+        "M", "N", "main (time)", "v2.0 (time)", "main (mem)", "v2.0 (mem)", "speedup")
     println("-" ^ 100)
 
     for r in results
         speedup = r.main_time / r.v2_time
-        speedup_str = speedup > 1 ? @sprintf("%8.2fx", speedup) : @sprintf("%8.2fx", speedup)
+        speedup_str = speedup > 1 ? @sprintf("%8.2fx", speedup) :
+                      @sprintf("%8.2fx", speedup)
         @printf("%-6d %-8d %15s %15s %12s %12s %10s\n",
-                r.M, r.N,
-                format_time(r.main_time),
-                format_time(r.v2_time),
-                format_memory(r.main_mem),
-                format_memory(r.v2_mem),
-                speedup_str)
+            r.M, r.N,
+            format_time(r.main_time),
+            format_time(r.v2_time),
+            format_memory(r.main_mem),
+            format_memory(r.v2_mem),
+            speedup_str)
     end
     println()
 end
@@ -273,14 +275,15 @@ function run_benchmarks()
             # Benchmark v2.0 branch
             v2_result = benchmark_v2(f!, M, N, u0, p)
 
-            push!(cpu_results, (
-                M = M,
-                N = N,
-                main_time = main_result.time,
-                main_mem = main_result.allocs,
-                v2_time = v2_result.time,
-                v2_mem = v2_result.allocs
-            ))
+            push!(cpu_results,
+                (
+                    M = M,
+                    N = N,
+                    main_time = main_result.time,
+                    main_mem = main_result.allocs,
+                    v2_time = v2_result.time,
+                    v2_mem = v2_result.allocs
+                ))
 
             println("done")
         end

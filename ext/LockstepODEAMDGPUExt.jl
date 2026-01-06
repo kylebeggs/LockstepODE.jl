@@ -25,7 +25,7 @@ function (bf::LockstepODE.BatchedFunction)(du::ROCArray, u::ROCArray, p, t)
     N = bf.lf.num_odes
 
     kernel = lockstep_kernel_gpu!(backend)
-    kernel(bf, du, u, p, t; ndrange=N)
+    kernel(bf, du, u, p, t; ndrange = N)
     KA.synchronize(backend)
 
     return nothing

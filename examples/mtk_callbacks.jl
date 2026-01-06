@@ -55,7 +55,7 @@ callbacks = [DiscreteCallback(
              for i in 1:num_odes]
 
 # Create LockstepFunction with callbacks
-lf = LockstepFunction(lotka_volterra, num_odes; callbacks=callbacks)
+lf = LockstepFunction(lotka_volterra, num_odes; callbacks = callbacks)
 
 # Initial conditions: different for each ODE to show per-ODE behavior
 u0s = [[1.0, 1.0], [2.0, 1.5], [3.0, 2.0]]
