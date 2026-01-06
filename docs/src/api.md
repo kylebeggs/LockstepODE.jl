@@ -4,30 +4,64 @@
 CurrentModule = LockstepODE
 ```
 
-## Types
+## Execution Modes
+
+```@docs
+LockstepMode
+Ensemble
+Batched
+```
+
+## Memory Ordering
+
+```@docs
+MemoryOrdering
+PerODE
+PerIndex
+BatchedOpts
+```
+
+## Core Types
 
 ```@docs
 LockstepFunction
-PerODE
-PerIndex
+LockstepProblem
+LockstepSolution
 ```
 
-## Functions
+## Integrator Types
 
 ```@docs
-batch_initial_conditions
+AbstractLockstepIntegrator
+EnsembleLockstepIntegrator
+BatchedLockstepIntegrator
+```
+
+## CommonSolve Interface
+
+```@docs
+CommonSolve.init
+CommonSolve.solve
+CommonSolve.solve!
+SciMLBase.step!
+SciMLBase.reinit!
+```
+
+## Solution Utilities
+
+```@docs
 extract_solutions
+extract_at_time
 ```
 
-## Constructor
+## Batched Mode Internals
 
 ```@docs
-LockstepFunction(f, ode_size::Int, num_odes::Int; internal_threading=true, ordering=PerODE(), callbacks=nothing)
-```
-
-## Callbacks
-
-```@docs
-SciMLBase.ODEProblem
+BatchedFunction
+SubIntegrator
+BatchedSubSolution
+_get_idxs
+ode_kernel!
 create_lockstep_callbacks
+batch_u0s
 ```

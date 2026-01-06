@@ -5,34 +5,29 @@ layout: home
 
 hero:
   name: LockstepODE.jl Docs
-  tagline: Stepping Through ODEs in Lockstep
+  tagline: Solving N Independent ODEs in Parallel
 ---
 ```
 
 ## Overview
 
-LockstepODE.jl is a Julia package for solving multiple ordinary differential equations (ODEs) in lockstep - meaning they share the same timestepping and are synchronized through time. It provides a high-level interface for batching multiple ODE systems into a single solve, with support for CPU threading and GPU acceleration, different memory layouts, and per-ODE callbacks.
+LockstepODE.jl is a Julia package for solving N independent ODEs in parallel with shared timestepping. It provides two execution modes with a unified CommonSolve.jl interface, supporting CPU threading, GPU acceleration, and per-ODE callbacks.
 
 ## Features
 
-- **CPU Threading**: Automatic CPU parallelization across ODE systems using `OhMyThreads.jl`
-- **GPU Acceleration**: Automatic GPU support via KernelAbstractions.jl for CUDA (NVIDIA), AMDGPU (AMD), Metal (Apple), and oneAPI (Intel)
-- **Callbacks**: Apply different callbacks to each ODE system or share callbacks across all systems
-- **Flexible memory layouts**: Support for both per-ODE (`PerODE`) and per-index (`PerIndex`) data organization
-- **Standard workflow**: Uses standard `OrdinaryDiffEq.jl` workflow with `ODEProblem` and `solve`
-- **Utility functions**: Built-in functions for batching initial conditions and extracting solutions
+- **Two execution modes**: Ensemble (N independent integrators) or Batched (single integrator with parallel RHS)
+- **CommonSolve.jl interface**: `init`, `solve`, `solve!`, `step!`, `reinit!`
+- **CPU threading**: Automatic parallelization via `OhMyThreads.jl`
+- **GPU acceleration**: CUDA, AMDGPU, Metal, oneAPI via optional extensions
+- **Per-ODE callbacks**: Different `DiscreteCallback` or `ContinuousCallback` per ODE
+- **Flexible memory layouts**: `PerODE` (default) or `PerIndex` for Batched mode
+- **ModelingToolkit integration**: Direct support for MTK systems
 
 ## Installation
 
 ```julia
 using Pkg
 Pkg.add("LockstepODE")
-```
-
-Or from the Julia REPL:
-
-```julia
-] add LockstepODE
 ```
 
 ## Quick Start
@@ -47,32 +42,56 @@ function harmonic_oscillator!(du, u, p, t)
     du[2] = -u[1]       # dv/dt = -x
 end
 
-# Create a lockstep function for 3 oscillators
-num_odes = 3
-u0_single = [1.0, 0.0]  # Single initial condition
-u0_batched = repeat(u0_single, num_odes)  # Batch for all oscillators
-lockstep_func = LockstepFunction(harmonic_oscillator!, length(u0_single), num_odes)
+# Create LockstepFunction for 3 oscillators
+lf = LockstepFunction(harmonic_oscillator!, 2, 3)
 
-# Use standard OrdinaryDiffEq.jl workflow
-prob = ODEProblem(lockstep_func, u0_batched, (0.0, 2π))
+# Initial conditions for each ODE
+u0s = [[1.0, 0.0], [2.0, 0.0], [0.5, 0.5]]
+
+# Create problem and solve (Ensemble mode by default)
+prob = LockstepProblem(lf, u0s, (0.0, 2*pi))
 sol = solve(prob, Tsit5())
 
-# Extract individual solutions
-individual_sols = extract_solutions(lockstep_func, sol)
+# Access individual solutions
+sol[1]       # First ODE's solution
+sol[2](1.5)  # Second ODE interpolated at t=1.5
 ```
+
+## Execution Modes
+
+### Ensemble Mode (Default)
+
+N independent ODE integrators with per-ODE adaptive timestepping:
+
+```julia
+prob = LockstepProblem(lf, u0s, tspan, p)
+sol = solve(prob, Tsit5())
+```
+
+Best for: per-ODE control, complex callbacks, ModelingToolkit integration.
+
+### Batched Mode
+
+Single integrator with batched state vector and parallel RHS evaluation:
+
+```julia
+prob = LockstepProblem{Batched}(lf, u0s, tspan, p)
+sol = solve(prob, Tsit5())
+```
+
+Best for: large N, GPU acceleration, maximum performance.
 
 ## GPU Acceleration
 
-LockstepODE.jl automatically detects and uses GPU arrays when available. Simply load your preferred GPU backend and convert your arrays:
+Use Batched mode with GPU arrays:
 
 ```julia
 using LockstepODE
 using CUDA  # Or: AMDGPU, Metal, oneAPI
 
-# Everything else stays the same - just use GPU arrays
-u0_batched = CuArray(u0_batched)  # Move to GPU
-prob = ODEProblem(lockstep_func, u0_batched, tspan, p)
-sol = solve(prob, Tsit5())  # Automatically runs on GPU
+u0s_gpu = [CuArray([1.0, 0.0]) for _ in 1:1000]
+prob = LockstepProblem{Batched}(lf, u0s_gpu, tspan, p)
+sol = solve(prob, Tsit5())  # Runs on GPU
 ```
 
 Supported backends:
@@ -81,42 +100,50 @@ Supported backends:
 - **Metal.jl**: Apple Silicon GPUs
 - **oneAPI.jl**: Intel GPUs
 
-All backends are optional - only install what you need. No code changes required; backend selection is automatic based on array type.
+## Key Features
 
-## Key Features Explained
+### CommonSolve Interface
 
-### Multiple Initial Conditions
+```julia
+integ = init(prob, Tsit5())
+step!(integ)
+sol = solve!(integ)
+reinit!(integ, new_u0s)
+```
 
-Solve the same ODE system with different starting points simultaneously. LockstepODE batches your initial conditions and parameters into a single efficient solve, then extracts individual solutions. Perfect for parameter sweeps, ensemble simulations, or Monte Carlo methods.
+### Per-ODE Callbacks
 
-See the [Basic Usage](examples/basic_usage.md) example for detailed implementation.
+```julia
+callbacks = [
+    DiscreteCallback((u,t,integ) -> u[1] > 1.0, integ -> integ.u[1] = 0.0),
+    DiscreteCallback((u,t,integ) -> u[1] > 2.0, integ -> integ.u[1] = 0.0),
+]
+lf = LockstepFunction(f!, 2, 2; callbacks=callbacks)
+```
 
-### Callbacks
+### Memory Layouts (Batched Mode)
 
-Apply different callbacks to each ODE in your batch. Each ODE can have its own event detection and handling logic while still being solved efficiently in parallel. Supports both `DiscreteCallback` and `ContinuousCallback` from OrdinaryDiffEq.jl.
+- **PerODE** (default): Each ODE's variables stored contiguously
+- **PerIndex**: Same variable across ODEs stored contiguously
 
-Example use cases:
-- Different reset thresholds per simulation
-- Heterogeneous stopping conditions
-- Per-instance event logging
+### Solution Access
 
-See the [Callbacks](examples/callbacks.md) example for comprehensive examples.
+```julia
+sol[i]              # i-th ODE solution
+sol[i].u            # Time series
+sol[i](t)           # Interpolation
+extract_at_time(sol, t)  # All states at time t
+```
 
-### Memory Layouts
+## Documentation
 
-Choose between two memory layouts optimized for different access patterns:
-- **PerODE** (default): Each ODE's variables stored contiguously - best for most use cases
-- **PerIndex**: Same variable across ODEs stored contiguously - can improve cache locality for certain operations
+- [Getting Started](getting_started.md): Complete tutorial
+- [API Reference](api.md): Full API documentation
+- [Examples](examples/basic_usage.md): Usage examples
 
-### Threading Control
+## Contents
 
-CPU parallelization across ODE systems using `OhMyThreads.jl`, with automatic GPU acceleration when GPU arrays are used. Control threading behavior with `internal_threading` parameter for integration with external parallel workflows or debugging.
-
-### Utility Functions
-
-Built-in functions for common operations:
-- `batch_initial_conditions`: Prepare initial conditions for batched solving
-- `extract_solutions`: Separate batched solution into individual ODESolution objects
-- `create_lockstep_callbacks`: Wrap callbacks for batched execution (usually automatic)
-
-See the [Advanced Configuration](examples/advanced_configuration.md) example for performance tuning and threading control.
+```@contents
+Pages = ["getting_started.md", "api.md", "examples/basic_usage.md", "examples/callbacks.md", "examples/advanced_configuration.md"]
+Depth = 2
+```
