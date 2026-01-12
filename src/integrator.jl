@@ -149,10 +149,9 @@ function Base.getproperty(integ::BatchedLockstepIntegrator, sym::Symbol)
         raw_u = getfield(integ, :integrator).u
         return [view(raw_u, _get_idxs(bf, i)) for i in 1:bf.lf.num_odes]
     elseif sym === :p
-        # Return per-ODE parameters
-        lf = getfield(integ, :lf)
-        raw_p = getfield(integ, :integrator).p
-        return [_get_ode_parameters(raw_p, i, lf.num_odes) for i in 1:lf.num_odes]
+        # Return per-ODE parameters (stored in bf)
+        bf = getfield(integ, :bf)
+        return bf.params
     elseif sym === :t
         return getfield(integ, :integrator).t
     elseif sym === :dt

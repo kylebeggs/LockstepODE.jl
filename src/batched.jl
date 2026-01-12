@@ -12,7 +12,7 @@ using OrdinaryDiffEq: DiscreteCallback, ContinuousCallback, CallbackSet
 #==============================================================================#
 
 """
-    BatchedFunction{O<:MemoryOrdering, F, C}
+    BatchedFunction{O<:MemoryOrdering, F, C, P}
 
 Callable wrapper for batched ODE solving with a LockstepFunction.
 
@@ -23,36 +23,41 @@ and provides the callable interface `(du, u, p, t)` for OrdinaryDiffEq.jl.
 - `lf::LockstepFunction{F,C}`: The underlying LockstepFunction
 - `ordering::O`: Memory layout (PerODE or PerIndex)
 - `internal_threading::Bool`: Enable CPU threading for RHS evaluation
+- `params::P`: Per-ODE parameters (stored here to bypass SciMLBase introspection)
 
 # Example
 ```julia
 lf = LockstepFunction(lorenz!, 3, 100)
-bf = BatchedFunction(lf, PerODE(), true)
+params = [p1, p2, ..., p100]
+bf = BatchedFunction(lf, params; ordering=PerODE())
 
-# Now bf can be used with ODEProblem
+# Now bf can be used with ODEProblem (pass nothing for p)
 u0_batched = vcat([[1.0, 0.0, 0.0] for _ in 1:100]...)
-prob = ODEProblem(bf, u0_batched, (0.0, 10.0), p)
+prob = ODEProblem(bf, u0_batched, (0.0, 10.0), nothing)
 ```
 """
-struct BatchedFunction{O<:MemoryOrdering, F, C}
+struct BatchedFunction{O<:MemoryOrdering, F, C, P}
     lf::LockstepFunction{F, C}
     ordering::O
     internal_threading::Bool
-end
-
-function BatchedFunction(
-    lf::LockstepFunction{F, C};
-    ordering::MemoryOrdering=PerODE(),
-    internal_threading::Bool=true
-) where {F, C}
-    return BatchedFunction{typeof(ordering), F, C}(lf, ordering, internal_threading)
+    params::P
 end
 
 function BatchedFunction(
     lf::LockstepFunction{F, C},
-    opts::BatchedOpts{O}
-) where {F, C, O}
-    return BatchedFunction{O, F, C}(lf, opts.ordering, opts.internal_threading)
+    params::P;
+    ordering::MemoryOrdering=PerODE(),
+    internal_threading::Bool=true
+) where {F, C, P}
+    return BatchedFunction{typeof(ordering), F, C, P}(lf, ordering, internal_threading, params)
+end
+
+function BatchedFunction(
+    lf::LockstepFunction{F, C},
+    opts::BatchedOpts{O},
+    params::P
+) where {F, C, O, P}
+    return BatchedFunction{O, F, C, P}(lf, opts.ordering, opts.internal_threading, params)
 end
 
 # Convenience accessors
@@ -112,12 +117,15 @@ Evaluate the i-th ODE's RHS within the batched system.
 
 This is the core kernel called for each ODE in the batch.
 Marked `@inline` for use in GPU extensions via KernelAbstractions.jl.
+
+Note: The `p` argument is unused - parameters are stored in `bf.params`.
+This signature is maintained for API compatibility with GPU extensions.
 """
 @inline function ode_kernel!(i::Int, bf::BatchedFunction, du, u, p, t)
     idxs = _get_idxs(bf, i)
     u_i = view(u, idxs)
     du_i = view(du, idxs)
-    p_i = _get_ode_parameters(p, i, bf.lf.num_odes)
+    p_i = bf.params[i]
     bf.lf.f(du_i, u_i, p_i, t)
     return nothing
 end
@@ -174,7 +182,7 @@ end
 function SubIntegrator(integrator, bf::BatchedFunction, ode_idx::Int)
     idxs = _get_idxs(bf, ode_idx)
     u_view = view(integrator.u, idxs)
-    p_i = _get_ode_parameters(integrator.p, ode_idx, bf.lf.num_odes)
+    p_i = bf.params[ode_idx]
     return SubIntegrator(integrator, bf, ode_idx, u_view, p_i)
 end
 

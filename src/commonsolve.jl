@@ -165,8 +165,8 @@ function CommonSolve.init(
     lf = prob.lf
     opts = prob.opts
 
-    # Create BatchedFunction for RHS evaluation
-    bf = BatchedFunction(lf, opts)
+    # Create BatchedFunction for RHS evaluation (stores params internally)
+    bf = BatchedFunction(lf, opts, prob.ps)
 
     # Batch initial conditions with correct ordering
     u0_batched = batch_u0s(prob.u0s, opts.ordering)
@@ -185,7 +185,8 @@ function CommonSolve.init(
     end
 
     # Create single batched ODEProblem
-    ode_prob = ODEProblem(bf, u0_batched, prob.tspan, prob.ps; callback=merged_cb)
+    # Pass nothing for p - params are stored in bf (bypasses SciMLBase introspection)
+    ode_prob = ODEProblem(bf, u0_batched, prob.tspan, nothing; callback=merged_cb)
 
     # Initialize the underlying integrator
     raw_integ = ode_init(ode_prob, alg; save_everystep, kwargs...)
