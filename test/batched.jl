@@ -7,21 +7,23 @@
     end
 
     lf = LockstepFunction(harmonic_oscillator!, 2, 3)
+    params = [nothing, nothing, nothing]  # Per-ODE parameters (required)
 
     # Default options
-    bf = BatchedFunction(lf)
+    bf = BatchedFunction(lf, params)
     @test bf.lf === lf
     @test bf.ordering isa PerODE
     @test bf.internal_threading == true
+    @test bf.params === params
 
     # Custom options
-    bf2 = BatchedFunction(lf; ordering=PerIndex(), internal_threading=false)
+    bf2 = BatchedFunction(lf, params; ordering=PerIndex(), internal_threading=false)
     @test bf2.ordering isa PerIndex
     @test bf2.internal_threading == false
 
     # From BatchedOpts
     opts = BatchedOpts(ordering=PerIndex(), internal_threading=false)
-    bf3 = BatchedFunction(lf, opts)
+    bf3 = BatchedFunction(lf, opts, params)
     @test bf3.ordering isa PerIndex
     @test bf3.internal_threading == false
 end
