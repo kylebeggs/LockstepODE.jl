@@ -185,27 +185,27 @@ This example demonstrates the full flexibility of LockstepODE's per-ODE callback
 
 ## Callbacks in Both Modes
 
-Callbacks work in both Ensemble and Batched modes:
+Callbacks work in both Batched and Ensemble modes:
 
-### Ensemble Mode (Default)
-
-Each ODE gets its own integrator with standard OrdinaryDiffEq callbacks:
-
-```julia
-prob = LockstepProblem(lf, u0s, tspan, ps)  # Callbacks work directly
-sol = solve(prob, Tsit5())
-```
-
-### Batched Mode
+### Batched Mode (Default)
 
 Callbacks are automatically wrapped to work with the batched state:
 
 ```julia
-prob = LockstepProblem{Batched}(lf, u0s, tspan, ps)
-sol = solve(prob, Tsit5())  # Callbacks still work!
+prob = LockstepProblem(lf, u0s, tspan, ps)  # Default is Batched
+sol = solve(prob, Tsit5())  # Callbacks work!
 ```
 
 The callback wrapping is transparent - you use the same callback definitions.
+
+### Ensemble Mode
+
+Each ODE gets its own integrator with standard OrdinaryDiffEq callbacks:
+
+```julia
+prob = LockstepProblem{Ensemble}(lf, u0s, tspan, ps)
+sol = solve(prob, Tsit5())  # Callbacks work directly
+```
 
 ---
 

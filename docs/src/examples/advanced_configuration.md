@@ -6,33 +6,13 @@ This page covers performance optimization and advanced configuration options in 
 
 LockstepODE v2.0 provides two execution modes with different performance characteristics:
 
-### Ensemble Mode (Default)
-
-N independent ODE integrators, each with adaptive timestepping:
-
-```julia
-prob = LockstepProblem(lf, u0s, tspan, ps)
-# or explicitly:
-prob = LockstepProblem{Ensemble}(lf, u0s, tspan, ps)
-```
-
-**Characteristics:**
-- Per-ODE adaptive timestepping
-- Full integrator access per ODE
-- Standard OrdinaryDiffEq callbacks
-- Best for ModelingToolkit integration
-
-**When to use:**
-- Per-ODE introspection needed during integration
-- Complex per-ODE callbacks
-- ODEs with very different dynamics/stiffness
-- Moderate N (< 100 ODEs)
-
-### Batched Mode
+### Batched Mode (Default)
 
 Single integrator with batched state vector and parallel RHS evaluation:
 
 ```julia
+prob = LockstepProblem(lf, u0s, tspan, ps)  # Default is Batched
+# or explicitly with options:
 prob = LockstepProblem{Batched}(lf, u0s, tspan, ps;
     ordering = PerODE(),        # Memory layout
     internal_threading = true   # CPU threading
@@ -50,6 +30,26 @@ prob = LockstepProblem{Batched}(lf, u0s, tspan, ps;
 - GPU acceleration desired
 - All ODEs have similar dynamics
 - Per-ODE control not needed during solve
+
+### Ensemble Mode
+
+N independent ODE integrators, each with adaptive timestepping:
+
+```julia
+prob = LockstepProblem{Ensemble}(lf, u0s, tspan, ps)
+```
+
+**Characteristics:**
+- Per-ODE adaptive timestepping
+- Full integrator access per ODE
+- Standard OrdinaryDiffEq callbacks
+- Best for ModelingToolkit integration
+
+**When to use:**
+- Per-ODE introspection needed during integration
+- Complex per-ODE callbacks
+- ODEs with very different dynamics/stiffness
+- Moderate N (< 100 ODEs)
 
 ---
 
@@ -338,8 +338,8 @@ end
 
 ### Recommended Workflow
 
-1. Start with Ensemble mode (default)
-2. If performance is critical and N > 100, try Batched mode
+1. Start with Batched mode (default) - best for most use cases
+2. If you need per-ODE adaptive timesteps or complex callbacks, try Ensemble mode
 3. For GPU, use Batched mode with GPU arrays
 4. Benchmark different configurations for your specific workload
 

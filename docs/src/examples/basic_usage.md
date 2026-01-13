@@ -68,17 +68,34 @@ Each solution supports interpolation, so you can do `sol[i](5.0)` to get the sta
 
 LockstepODE v2.0 supports two execution modes:
 
-### Ensemble Mode (Default)
+### Batched Mode (Default)
+
+Single integrator with batched state and parallel RHS:
+
+```julia
+# Batched mode is the default
+prob = LockstepProblem(lf, u0s, tspan, ps)
+sol = solve(prob, Tsit5())
+
+# Or explicitly with options
+prob = LockstepProblem{Batched}(lf, u0s, tspan, ps;
+    ordering = PerODE(),        # Memory layout
+    internal_threading = true   # CPU threading
+)
+```
+
+**Use for:**
+- Large N (100+ ODEs)
+- GPU acceleration
+- Maximum performance
+
+### Ensemble Mode
 
 N independent integrators, each with adaptive timestepping:
 
 ```julia
-# Ensemble mode is the default
-prob = LockstepProblem(lf, u0s, tspan, ps)
-sol = solve(prob, Tsit5())
-
-# Or explicitly
 prob = LockstepProblem{Ensemble}(lf, u0s, tspan, ps)
+sol = solve(prob, Tsit5())
 ```
 
 **Use for:**
@@ -86,23 +103,6 @@ prob = LockstepProblem{Ensemble}(lf, u0s, tspan, ps)
 - Complex per-ODE callbacks
 - ModelingToolkit systems
 - When ODEs have very different dynamics
-
-### Batched Mode
-
-Single integrator with batched state and parallel RHS:
-
-```julia
-prob = LockstepProblem{Batched}(lf, u0s, tspan, ps;
-    ordering = PerODE(),        # Memory layout
-    internal_threading = true   # CPU threading
-)
-sol = solve(prob, Tsit5())
-```
-
-**Use for:**
-- Large N (100+ ODEs)
-- GPU acceleration
-- Maximum performance
 
 ---
 
@@ -252,7 +252,7 @@ Key takeaways for v2.0:
 
 1. **Use LockstepProblem** instead of ODEProblem
 2. **Pass vector of vectors** for initial conditions (automatic normalization)
-3. **Choose execution mode**: Ensemble (default) or Batched
+3. **Choose execution mode**: Batched (default) or Ensemble
 4. **Access solutions directly** with `sol[i]` (no extract_solutions needed)
 5. **CommonSolve interface**: `init`, `step!`, `solve!`, `reinit!`
 

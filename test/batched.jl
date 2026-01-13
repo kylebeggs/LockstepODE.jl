@@ -174,12 +174,12 @@ end
     u0s = [[1.0], [2.0], [3.0]]
     ps = [0.1, 0.2, 0.3]
 
-    # Ensemble mode (default)
-    prob_e = LockstepProblem(lf, u0s, (0.0, 5.0), ps)
+    # Ensemble mode
+    prob_e = LockstepProblem{Ensemble}(lf, u0s, (0.0, 5.0), ps)
     sol_e = solve(prob_e, Tsit5())
 
-    # Batched mode
-    prob_b = LockstepProblem{Batched}(lf, u0s, (0.0, 5.0), ps)
+    # Batched mode (default)
+    prob_b = LockstepProblem(lf, u0s, (0.0, 5.0), ps)
     sol_b = solve(prob_b, Tsit5())
 
     # Compare final values (rtol=1e-4 accounts for different evaluation strategies)

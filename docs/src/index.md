@@ -48,7 +48,7 @@ lf = LockstepFunction(harmonic_oscillator!, 2, 3)
 # Initial conditions for each ODE
 u0s = [[1.0, 0.0], [2.0, 0.0], [0.5, 0.5]]
 
-# Create problem and solve (Ensemble mode by default)
+# Create problem and solve (Batched mode by default)
 prob = LockstepProblem(lf, u0s, (0.0, 2*pi))
 sol = solve(prob, Tsit5())
 
@@ -59,27 +59,27 @@ sol[2](1.5)  # Second ODE interpolated at t=1.5
 
 ## Execution Modes
 
-### Ensemble Mode (Default)
-
-N independent ODE integrators with per-ODE adaptive timestepping:
-
-```julia
-prob = LockstepProblem(lf, u0s, tspan, p)
-sol = solve(prob, Tsit5())
-```
-
-Best for: per-ODE control, complex callbacks, ModelingToolkit integration.
-
-### Batched Mode
+### Batched Mode (Default)
 
 Single integrator with batched state vector and parallel RHS evaluation:
 
 ```julia
-prob = LockstepProblem{Batched}(lf, u0s, tspan, p)
+prob = LockstepProblem(lf, u0s, tspan, p)  # Default is Batched
 sol = solve(prob, Tsit5())
 ```
 
 Best for: large N, GPU acceleration, maximum performance.
+
+### Ensemble Mode
+
+N independent ODE integrators with per-ODE adaptive timestepping:
+
+```julia
+prob = LockstepProblem{Ensemble}(lf, u0s, tspan, p)
+sol = solve(prob, Tsit5())
+```
+
+Best for: per-ODE control, complex callbacks, ModelingToolkit integration.
 
 ## GPU Acceleration
 
