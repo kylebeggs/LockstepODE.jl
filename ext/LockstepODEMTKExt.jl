@@ -8,7 +8,7 @@ module LockstepODEMTKExt
 
 using LockstepODE
 using ModelingToolkit
-using ModelingToolkit: ODESystem, ODEFunction, parameters, unknowns
+using ModelingToolkit: ODESystem, ODEFunction, parameters, unknowns, hasdefault, getdefault
 
 import LockstepODE: LockstepFunction
 
@@ -60,7 +60,7 @@ function LockstepFunction(
         sys::ODESystem,
         num_odes::Integer;
         callbacks = nothing
-)
+    )
     # Get the compiled ODE function
     ode_func = ODEFunction(sys)
     f = ode_func.f
@@ -106,9 +106,16 @@ ps = transform_parameters(sys, params)
 function transform_parameters(
         sys::ODESystem,
         params::Vector{<:Union{<:AbstractDict, <:AbstractVector{<:Pair}}}
-)
+    )
     canonical_params = parameters(sys)
-    defaults_dict = ModelingToolkit.defaults(sys)
+
+    # Build defaults dictionary from individual parameter metadata (MTK v11 API)
+    defaults_dict = Dict{Any, Any}()
+    for p in canonical_params
+        if hasdefault(p)
+            defaults_dict[p] = getdefault(p)
+        end
+    end
 
     transformed = Vector{Vector{Float64}}(undef, length(params))
 
