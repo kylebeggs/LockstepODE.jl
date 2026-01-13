@@ -1,23 +1,22 @@
 # Getting Started
 
-This guide will walk you through using LockstepODE.jl to solve multiple ODEs in parallel on CPU or GPU.
+This guide walks you through using LockstepODE.jl to solve multiple ODEs in parallel.
 
 ## Basic Workflow
 
-The typical workflow with LockstepODE consists of four steps:
+LockstepODE v2.0 uses a simple four-step workflow:
 
 1. Define your ODE function (same as standard DifferentialEquations.jl)
 2. Create a `LockstepFunction` wrapper
-3. Prepare batched initial conditions
-4. Solve and extract individual solutions
+3. Create a `LockstepProblem` with initial conditions
+4. Solve and access individual solutions
 
 ## Step 1: Define Your ODE Function
 
-Your ODE function should follow the standard in-place form expected by DifferentialEquations.jl:
+Your ODE function should follow the standard in-place form:
 
 ```julia
 function my_ode!(du, u, p, t)
-    # Your ODE equations here
     du[1] = ...
     du[2] = ...
 end
@@ -25,199 +24,301 @@ end
 
 ## Step 2: Create a LockstepFunction
 
-Wrap your ODE function with `LockstepFunction`, specifying the size of each ODE and how many to solve:
+Wrap your ODE function with `LockstepFunction`:
 
 ```julia
-lockstep_func = LockstepFunction(
-    my_ode!,           # Your ODE function
-    ode_size,          # Number of variables per ODE
-    num_odes;          # Number of ODEs to solve in parallel
-    internal_threading = true,  # Enable CPU threading (default; GPU uses kernels instead)
-    ordering = PerODE()        # Memory layout (default)
+lf = LockstepFunction(
+    my_ode!,    # Your ODE function
+    ode_size,   # Number of variables per ODE
+    num_odes;   # Number of ODEs to solve in parallel
+    callbacks = nothing  # Optional per-ODE callbacks
 )
 ```
 
-## Step 3: Prepare Initial Conditions
-
-LockstepODE provides flexible ways to specify initial conditions:
-
-### Same Initial Conditions for All ODEs
+## Step 3: Create a LockstepProblem
 
 ```julia
-u0_single = [1.0, 2.0, 3.0]  # Initial conditions for one ODE
-u0_batched = batch_initial_conditions(u0_single, num_odes, ode_size)
+# Initial conditions as vector of vectors
+u0s = [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]
+
+# Create problem (Batched mode by default - best performance)
+prob = LockstepProblem(lf, u0s, tspan, p)
+
+# Or explicitly use Ensemble mode (independent per-ODE timesteps)
+prob = LockstepProblem{Ensemble}(lf, u0s, tspan, p)
 ```
 
-### Different Initial Conditions for Each ODE
+## Step 4: Solve and Access Solutions
 
 ```julia
-# Vector of initial condition vectors
-u0_multiple = [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]
-u0_batched = batch_initial_conditions(u0_multiple, num_odes, ode_size)
-```
-
-### Pre-batched Initial Conditions
-
-```julia
-# If you already have a flat vector of all initial conditions
-u0_batched = ones(num_odes * ode_size)
-```
-
-## Step 4: Solve and Extract Solutions
-
-```julia
-# Create the ODE problem
-prob = ODEProblem(lockstep_func, u0_batched, tspan, p)
-
-# Solve using any DifferentialEquations.jl solver
+# Solve using any OrdinaryDiffEq solver
 sol = solve(prob, Tsit5())
 
-# Extract individual solutions
-individual_solutions = extract_solutions(lockstep_func, sol)
-
-# Access specific solutions
-for (i, sol_i) in enumerate(individual_solutions)
-    println("ODE $i final state: ", sol_i.u[end])
-end
+# Access individual solutions directly
+sol[1]       # First ODE's solution
+sol[2].u     # Second ODE's state time series
+sol[3](1.5)  # Third ODE interpolated at t=1.5
 ```
 
-## Complete Example: Exponential Decay
+## Execution Modes
 
-Here's a complete example solving multiple exponential decay ODEs with different decay rates:
+LockstepODE provides two execution modes with different performance characteristics and tradeoffs.
+
+### Batched Mode (Default)
+
+Single integrator with batched state vector and parallel RHS evaluation:
+
+```julia
+prob = LockstepProblem(lf, u0s, tspan, p)  # Default is Batched
+# or explicitly:
+prob = LockstepProblem{Batched}(lf, u0s, tspan, p;
+    ordering = PerODE(),        # Memory layout
+    internal_threading = true   # CPU threading
+)
+```
+
+**Pros:**
+- 10-100x faster for large N (N > 100)
+- Lower memory overhead (single integrator vs N integrators)
+- GPU-compatible
+- Simpler synchronization (all ODEs share same timestep)
+
+**Cons:**
+- **Stiffness penalty**: If ONE ODE encounters stiffness requiring smaller timesteps, ALL ODEs pay the performance cost
+- All ODEs must use the same solver tolerance
+- Per-ODE callbacks have overhead from batched wrapper
+
+**Best for:**
+- Large number of ODEs (N > 100)
+- ODEs with similar dynamics/stiffness
+- GPU acceleration
+- Maximum throughput when per-ODE control isn't needed
+
+### Ensemble Mode
+
+N independent ODE integrators, each with adaptive timestepping:
+
+```julia
+prob = LockstepProblem{Ensemble}(lf, u0s, tspan, p)
+```
+
+**Pros:**
+- **Independent timesteps**: Stiff ODEs can take smaller steps without penalizing smooth ODEs
+- Per-ODE control and introspection
+- Native callback support (no wrapper overhead)
+- Each ODE can have different tolerances
+
+**Cons:**
+- Higher overhead (N integrators vs 1)
+- More memory (N solution objects)
+- Synchronization cost after each step
+- No GPU support
+
+**Best for:**
+- ODEs with heterogeneous dynamics (some stiff, some smooth)
+- Per-ODE callbacks with fine control
+- Small N (< 100)
+- Per-ODE introspection during integration
+
+## Choosing an Execution Mode
+
+| Scenario | Recommended Mode |
+|----------|-----------------|
+| N > 100 ODEs with similar dynamics | **Batched** |
+| GPU acceleration needed | **Batched** |
+| Mixed stiff/smooth ODEs | **Ensemble** |
+| Per-ODE adaptive tolerances | **Ensemble** |
+| N < 100 with complex callbacks | **Ensemble** |
+| Maximum throughput, homogeneous systems | **Batched** |
+
+### Performance Characteristics
+
+| N ODEs | Batched vs Ensemble | Notes |
+|--------|---------------------|-------|
+| 10     | ~1x                 | Similar performance |
+| 100    | ~5x faster          | Batched starts winning |
+| 1000   | ~20x faster         | Batched clearly better |
+| 10000  | ~70x faster         | Batched much better |
+
+**Exception**: If your ODEs have mixed stiffness, Ensemble may win despite higher overhead because each ODE adapts its timestep independently.
+
+### The Stiffness Tradeoff
+
+The key architectural difference is how stiffness affects the system:
+
+**Batched Mode**: All ODEs share the same timestep. If ODE #47 out of 1000 becomes stiff and needs dt=1e-6, ALL 1000 ODEs use dt=1e-6. This can dramatically slow down the entire batch.
+
+**Ensemble Mode**: Each ODE has its own adaptive timestep. ODE #47 can use dt=1e-6 while the other 999 ODEs continue with dt=0.1. Only the stiff ODE pays the performance cost.
+
+For homogeneous systems (all ODEs have similar dynamics), Batched mode's lower overhead wins decisively. For heterogeneous systems, consider benchmarking both modes with your specific workload
+
+## Complete Example: Exponential Decay
 
 ```julia
 using LockstepODE
 using OrdinaryDiffEq
-using Plots
 
 # Define the ODE
 function exponential_decay!(du, u, p, t)
     du[1] = -p * u[1]
 end
 
-# Setup parameters
+# Setup
 num_odes = 10
 ode_size = 1
 decay_rates = range(0.1, 2.0, length=num_odes)
 
 # Create LockstepFunction
-lockstep_func = LockstepFunction(exponential_decay!, ode_size, num_odes)
+lf = LockstepFunction(exponential_decay!, ode_size, num_odes)
 
 # Initial conditions (all start at 1.0)
-u0 = [1.0]
-u0_batched = batch_initial_conditions(u0, num_odes, ode_size)
+u0s = [[1.0] for _ in 1:num_odes]
 
-# Time span
-tspan = (0.0, 5.0)
-
-# Create and solve the problem
-# Note: parameters can be a vector (one per ODE) or scalar (shared)
-prob = ODEProblem(lockstep_func, u0_batched, tspan, decay_rates)
+# Create and solve
+prob = LockstepProblem(lf, u0s, (0.0, 5.0), collect(decay_rates))
 sol = solve(prob, Tsit5())
 
-# Extract and plot individual solutions
-individual_solutions = extract_solutions(lockstep_func, sol)
-
-plot()
-for (i, sol_i) in enumerate(individual_solutions)
-    plot!(sol_i.t, [u[1] for u in sol_i.u], 
-          label="λ = $(decay_rates[i])", 
-          lw=2)
+# Access solutions
+for i in 1:num_odes
+    println("ODE $i final state: ", sol[i].u[end])
 end
-xlabel!("Time")
-ylabel!("Value")
-title!("Exponential Decay with Different Rates")
 ```
 
-## Memory Ordering
+## CommonSolve Interface
 
-LockstepODE supports two memory layouts:
+LockstepODE implements the full CommonSolve.jl interface:
 
-### PerODE (Default)
-Variables for each ODE are stored contiguously. This is usually the best choice:
 ```julia
-lockstep_func = LockstepFunction(my_ode!, ode_size, num_odes, ordering=PerODE())
+# Initialize integrator without solving
+integ = init(prob, Tsit5())
+
+# Manual stepping
+step!(integ)                    # One adaptive step
+step!(integ, 0.1, true)         # Step by dt=0.1, stop exactly at t+dt
+
+# Access during integration
+integ.t                         # Current time
+integ.u                         # Current states (vector of vectors)
+integ[i]                        # i-th sub-integrator
+
+# Complete the solve
+sol = solve!(integ)
+
+# Or solve directly
+sol = solve(prob, Tsit5())
+
+# Reinitialize with new conditions
+reinit!(integ, new_u0s)
 ```
 
-### PerIndex
-Variables of the same index across ODEs are stored contiguously:
-```julia
-lockstep_func = LockstepFunction(my_ode!, ode_size, num_odes, ordering=PerIndex())
-```
+## Initial Condition Normalization
 
-## Threading Control
-
-By default, LockstepODE uses internal CPU threading. This parameter only affects CPU execution; GPU execution uses KernelAbstractions.jl kernels instead. You can disable this if you want to control threading externally:
+LockstepProblem automatically normalizes initial conditions:
 
 ```julia
-lockstep_func = LockstepFunction(my_ode!, ode_size, num_odes, internal_threading=false)
+# Single initial condition (replicated for all ODEs)
+prob = LockstepProblem(lf, [1.0, 0.0], tspan)
+
+# Vector of initial conditions (one per ODE)
+prob = LockstepProblem(lf, [[1.0, 0.0], [2.0, 0.0], [3.0, 0.0]], tspan)
 ```
 
 ## Parameter Handling
 
-Parameters can be specified in two ways:
+Parameters work the same way:
 
-1. **Shared parameters**: All ODEs use the same parameters
-   ```julia
-   p = (1.0, 2.0, 3.0)  # Tuple or scalar
-   prob = ODEProblem(lockstep_func, u0_batched, tspan, p)
-   ```
+```julia
+# Shared parameter for all ODEs
+prob = LockstepProblem(lf, u0s, tspan, 0.5)
 
-2. **Per-ODE parameters**: Each ODE has its own parameters
-   ```julia
-   p = [p1, p2, p3, ...]  # Vector with one element per ODE
-   prob = ODEProblem(lockstep_func, u0_batched, tspan, p)
-   ```
+# Per-ODE parameters
+prob = LockstepProblem(lf, u0s, tspan, [0.1, 0.5, 1.0])
+```
+
+## Memory Layouts (Batched Mode)
+
+Batched mode supports two memory layouts:
+
+### PerODE (Default)
+
+Variables for each ODE stored contiguously:
+```
+[u1_ode1, u2_ode1, u1_ode2, u2_ode2, ...]
+```
+
+```julia
+prob = LockstepProblem{Batched}(lf, u0s, tspan; ordering=PerODE())
+```
+
+### PerIndex
+
+Same variable across ODEs stored contiguously:
+```
+[u1_ode1, u1_ode2, u2_ode1, u2_ode2, ...]
+```
+
+```julia
+prob = LockstepProblem{Batched}(lf, u0s, tspan; ordering=PerIndex())
+```
 
 ## GPU Acceleration
 
-LockstepODE.jl supports multiple GPU backends through automatic array-type dispatch. Simply use GPU arrays as initial conditions, and the appropriate GPU kernel will be used automatically.
+Use Batched mode with GPU arrays:
 
-### Supported GPU Backends
-
-#### NVIDIA GPUs (CUDA)
 ```julia
 using LockstepODE
-using CUDA  # Activates CUDA extension
+using CUDA  # Or: AMDGPU, Metal, oneAPI
 
-u0_batched = CuArray(u0_batched)  # Move to GPU
-prob = ODEProblem(lockstep_func, u0_batched, tspan, p)
-sol = solve(prob, Tsit5())  # Automatically uses CUDA kernel
+# Create GPU initial conditions
+u0s_gpu = [CuArray([1.0, 0.0]) for _ in 1:1000]
+
+# Use Batched mode (required for GPU)
+prob = LockstepProblem{Batched}(lf, u0s_gpu, tspan, p)
+sol = solve(prob, Tsit5())  # Runs on GPU
 ```
 
-#### AMD GPUs (ROCm)
-```julia
-using LockstepODE
-using AMDGPU  # Activates AMDGPU extension
+### Supported Backends
 
-u0_batched = ROCArray(u0_batched)  # Move to AMD GPU
-prob = ODEProblem(lockstep_func, u0_batched, tspan, p)
-sol = solve(prob, Tsit5())  # Automatically uses ROCm kernel
-```
-
-#### Apple Silicon (Metal)
-```julia
-using LockstepODE
-using Metal  # Activates Metal extension
-
-u0_batched = MtlArray(u0_batched)  # Move to Metal GPU
-prob = ODEProblem(lockstep_func, u0_batched, tspan, p)
-sol = solve(prob, Tsit5())  # Automatically uses Metal kernel
-```
-
-#### Intel GPUs (oneAPI)
-```julia
-using LockstepODE
-using oneAPI  # Activates oneAPI extension
-
-u0_batched = oneArray(u0_batched)  # Move to Intel GPU
-prob = ODEProblem(lockstep_func, u0_batched, tspan, p)
-sol = solve(prob, Tsit5())  # Automatically uses oneAPI kernel
-```
+| Package | GPU Type | Array Type |
+|---------|----------|------------|
+| CUDA.jl | NVIDIA | `CuArray` |
+| AMDGPU.jl | AMD | `ROCArray` |
+| Metal.jl | Apple Silicon | `MtlArray` |
+| oneAPI.jl | Intel | `oneArray` |
 
 ### GPU Notes
 
-- GPU backends are optional: only install the ones you need
+- GPU backends are optional extensions - only install what you need
 - Backend selection is automatic based on array type
-- All backends use the same `LockstepFunction` - no code changes needed
-- GPU acceleration is most beneficial for large numbers of ODEs (100+)
+- GPU acceleration is most beneficial for large N (100+ ODEs)
+- All backends use the same code - just change the array type
+
+## Solution Access
+
+```julia
+sol = solve(prob, Tsit5())
+
+# Individual solution access
+sol[i]           # i-th ODE solution
+sol[i].u         # Time series of states
+sol[i].t         # Time points
+sol[i](t)        # Interpolate at time t
+sol[i].retcode   # Return code
+
+# Combined solution properties
+sol.retcode      # Overall return code
+length(sol)      # Number of ODEs
+
+# Extract all states at a specific time
+states = extract_at_time(sol, 5.0)
+```
+
+## Threading Control
+
+Disable internal threading for external parallelization:
+
+```julia
+# Ensemble mode: threading controlled by Julia threads
+# Batched mode: disable internal threading
+prob = LockstepProblem{Batched}(lf, u0s, tspan; internal_threading=false)
+```
