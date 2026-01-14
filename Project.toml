@@ -1,7 +1,7 @@
 name = "LockstepODE"
 uuid = "6148aecd-d198-440c-a04f-51208fe3c037"
-authors = ["Kyle Beggs <beggskw@gmail.com> and contributors"]
 version = "2.0.0"
+authors = ["Kyle Beggs <beggskw@gmail.com> and contributors"]
 
 [deps]
 CommonSolve = "38540f10-b2f7-11e9-35d8-d573e4eb0ff2"
@@ -24,6 +24,19 @@ LockstepODEMTKExt = "ModelingToolkit"
 LockstepODEMetalExt = ["Metal", "KernelAbstractions"]
 LockstepODEoneAPIExt = ["oneAPI", "KernelAbstractions"]
 
+[compat]
+AMDGPU = "1"
+CUDA = "5"
+CommonSolve = "0.2"
+KernelAbstractions = "0.9"
+Metal = "1"
+ModelingToolkit = "11"
+OhMyThreads = "0.7, 0.8"
+OrdinaryDiffEq = "6"
+SciMLBase = "2"
+julia = "1.10"
+oneAPI = "1, 2"
+
 [extras]
 CommonSolve = "38540f10-b2f7-11e9-35d8-d573e4eb0ff2"
 ModelingToolkit = "961ee093-0014-501f-94e3-6117800e7a78"
@@ -36,16 +49,3 @@ TestItems = "1c621080-faea-4a02-84b6-bbd5e436b8fe"
 
 [targets]
 test = ["CommonSolve", "ModelingToolkit", "OrdinaryDiffEq", "SciMLBase", "Statistics", "Test", "TestItemRunner", "TestItems"]
-
-[compat]
-AMDGPU = "1"
-CUDA = "5"
-CommonSolve = "0.2"
-KernelAbstractions = "0.9"
-Metal = "1"
-ModelingToolkit = "11"
-OhMyThreads = "0.7, 0.8"
-OrdinaryDiffEq = "6"
-SciMLBase = "2"
-julia = "1.10"
-oneAPI = "1"
