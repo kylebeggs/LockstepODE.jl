@@ -13,14 +13,16 @@ Problem type for batched ODE solving with mode-specific behavior.
 # Type Parameters
 - `M<:LockstepMode`: Execution mode (Ensemble or Batched)
 - `LF`: LockstepFunction type
-- `U`: Initial condition element type
+- `US<:AbstractVector`: Storage type for `u0s` (vector-of-vectors or pre-flattened batch)
 - `T`: Time type
 - `P`: Parameter element type
 - `Opts`: Mode-specific options type (Nothing for Ensemble, BatchedOpts for Batched)
 
 # Fields
 - `lf::LF`: LockstepFunction coordinator
-- `u0s::Vector{U}`: Initial conditions (one per ODE, normalized)
+- `u0s::US`: Initial conditions. Either a `Vector{<:AbstractVector}` of per-ODE states,
+  or (Batched mode only) a flat `AbstractVector{<:Number}` of length `num_odes * ode_size`
+  already arranged in the configured `MemoryOrdering`.
 - `tspan::Tuple{T, T}`: Time span
 - `ps::Vector{P}`: Parameters (one per ODE, normalized)
 - `opts::Opts`: Mode-specific options
@@ -59,9 +61,9 @@ prob_e = LockstepProblem{Ensemble}(lf, u0s, (0.0, 10.0), p)
 sol_e = solve(prob_e, Tsit5())
 ```
 """
-struct LockstepProblem{M<:LockstepMode, LF, U, T, P, Opts}
+struct LockstepProblem{M<:LockstepMode, LF, US<:AbstractVector, T, P, Opts}
     lf::LF
-    u0s::Vector{U}
+    u0s::US
     tspan::Tuple{T, T}
     ps::Vector{P}
     opts::Opts
@@ -100,14 +102,21 @@ function LockstepProblem{Ensemble}(
     tspan::Tuple,
     p = nothing
 ) where {F, C}
+    u0s isa AbstractVector{<:Number} && length(u0s) == lf.num_odes * lf.ode_size &&
+        throw(ArgumentError(
+            "Ensemble mode requires per-ODE initial conditions (a vector of vectors) " *
+            "or a single state vector to replicate. A pre-flattened batch of length " *
+            "num_odes * ode_size is only supported in Batched mode."
+        ))
+
     u0s_normalized = _normalize_u0s(u0s, lf.num_odes, lf.ode_size)
     ps_normalized = _normalize_params(p, lf.num_odes)
 
-    U = eltype(u0s_normalized)
+    US = typeof(u0s_normalized)
     T = promote_type(typeof(tspan[1]), typeof(tspan[2]))
     P = eltype(ps_normalized)
 
-    return LockstepProblem{Ensemble, typeof(lf), U, T, P, Nothing}(
+    return LockstepProblem{Ensemble, typeof(lf), US, T, P, Nothing}(
         lf,
         u0s_normalized,
         (T(tspan[1]), T(tspan[2])),
@@ -144,12 +153,12 @@ function LockstepProblem{Batched}(
     ps_normalized = _normalize_params(p, lf.num_odes)
     opts = BatchedOpts(; ordering=ordering, internal_threading=internal_threading)
 
-    U = eltype(u0s_normalized)
+    US = typeof(u0s_normalized)
     T = promote_type(typeof(tspan[1]), typeof(tspan[2]))
     P = eltype(ps_normalized)
     O = typeof(opts)
 
-    return LockstepProblem{Batched, typeof(lf), U, T, P, O}(
+    return LockstepProblem{Batched, typeof(lf), US, T, P, O}(
         lf,
         u0s_normalized,
         (T(tspan[1]), T(tspan[2])),
@@ -178,11 +187,21 @@ function _normalize_u0s(u0s::AbstractVector{<:AbstractVector}, num_odes::Int, od
 end
 
 function _normalize_u0s(u0::AbstractVector{<:Number}, num_odes::Int, ode_size::Int)
-    # Single u0 - replicate for all ODEs
-    length(u0) == ode_size || throw(ArgumentError(
-        "Expected state size $ode_size, got $(length(u0))"
-    ))
-    return [copy(u0) for _ in 1:num_odes]
+    n = length(u0)
+    if n == ode_size
+        # Single u0 - replicate for all ODEs
+        return [copy(u0) for _ in 1:num_odes]
+    elseif n == num_odes * ode_size
+        # Pre-flattened batch (Batched mode) - use as-is.
+        # Caller is responsible for arranging bytes consistent with the chosen MemoryOrdering.
+        return u0
+    else
+        throw(ArgumentError(
+            "u0 must have length $ode_size (single state, replicated across ODEs) or " *
+            "$(num_odes * ode_size) (pre-flattened batch of $num_odes ODEs × $ode_size state), " *
+            "got $n"
+        ))
+    end
 end
 
 """

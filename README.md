@@ -102,12 +102,34 @@ Load your preferred GPU backend and use GPU arrays:
 using LockstepODE
 using CUDA  # Or: AMDGPU, Metal, oneAPI
 
-# Convert initial conditions to GPU arrays
+# One CuArray per ODE (ergonomic input)
 u0s_gpu = [CuArray([1.0, 0.0]) for _ in 1:1000]
 
-# Use Batched mode for GPU
-prob = LockstepProblem{Batched}(lf, u0s_gpu, tspan, p)
+# Use Batched mode for GPU; PerIndex is the GPU-friendly layout
+prob = LockstepProblem{Batched}(lf, u0s_gpu, tspan, p; ordering=PerIndex())
 sol = solve(prob, Tsit5())  # Runs on GPU
+```
+
+The per-ODE `CuArray`s are concatenated into a single contiguous device array
+before integration. RHS evaluation is a single KernelAbstractions kernel launch
+over the flat state with one thread per ODE — no per-ODE kernel launches or
+vector-of-vectors in the hot path.
+
+**Memory ordering matters on GPU.** `PerODE` (the default) stores each ODE's
+state contiguously, which means adjacent threads read memory stride-`ode_size`
+apart — uncoalesced. `PerIndex` interleaves so that threads at the same
+ODE-step read adjacent addresses — coalesced. For small `ode_size` the penalty
+is modest; for larger per-ODE state it's the difference between good and bad
+bandwidth utilization. Prefer `PerIndex` for GPU.
+
+**Pre-flattened input for large N.** For big batches you can skip the N small
+device allocations and pass an already-flat state directly. Its length must be
+`num_odes * ode_size` and its byte layout must match the chosen `ordering`:
+
+```julia
+u0_flat = CUDA.zeros(Float64, lf.num_odes * lf.ode_size)
+# ... fill u0_flat in PerIndex layout ...
+prob = LockstepProblem{Batched}(lf, u0_flat, tspan, p; ordering=PerIndex())
 ```
 
 ## Per-ODE Callbacks
@@ -185,7 +207,7 @@ LockstepProblem{Batched}(lf, u0s, tspan, p=nothing; ordering=PerODE(), internal_
 
 1. **Choose the right mode**: Ensemble for control, Batched for performance
 2. **Use threading**: Keep `internal_threading=true` (default)
-3. **GPU for large N**: Use Batched mode with GPU arrays for N > 100
+3. **GPU for large N**: Use Batched mode with GPU arrays for N > 100. Pass `ordering=PerIndex()` for coalesced memory access; pass a pre-flattened `CuArray` of length `num_odes * ode_size` to avoid N small device allocations.
 4. **Type stability**: Ensure your ODE function is type-stable
 
 ## Contributing

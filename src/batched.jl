@@ -36,7 +36,7 @@ u0_batched = vcat([[1.0, 0.0, 0.0] for _ in 1:100]...)
 prob = ODEProblem(bf, u0_batched, (0.0, 10.0), nothing)
 ```
 """
-struct BatchedFunction{O<:MemoryOrdering, F, C, P}
+struct BatchedFunction{O <: MemoryOrdering, F, C, P}
     lf::LockstepFunction{F, C}
     ordering::O
     internal_threading::Bool
@@ -44,19 +44,19 @@ struct BatchedFunction{O<:MemoryOrdering, F, C, P}
 end
 
 function BatchedFunction(
-    lf::LockstepFunction{F, C},
-    params::P;
-    ordering::MemoryOrdering=PerODE(),
-    internal_threading::Bool=true
-) where {F, C, P}
+        lf::LockstepFunction{F, C},
+        params::P;
+        ordering::MemoryOrdering = PerODE(),
+        internal_threading::Bool = true
+    ) where {F, C, P}
     return BatchedFunction{typeof(ordering), F, C, P}(lf, ordering, internal_threading, params)
 end
 
 function BatchedFunction(
-    lf::LockstepFunction{F, C},
-    opts::BatchedOpts{O},
-    params::P
-) where {F, C, O, P}
+        lf::LockstepFunction{F, C},
+        opts::BatchedOpts{O},
+        params::P
+    ) where {F, C, O, P}
     return BatchedFunction{O, F, C, P}(lf, opts.ordering, opts.internal_threading, params)
 end
 
@@ -229,13 +229,7 @@ function create_lockstep_callbacks(bf::BatchedFunction)
     for i in 1:lf.num_odes
         cb = _get_ode_callback(lf.callbacks, i, lf.num_odes)
         isnothing(cb) && continue
-
-        if cb isa DiscreteCallback || cb isa ContinuousCallback
-            push!(wrapped_callbacks, _wrap_callback(cb, bf, i))
-        else
-            error("Unsupported callback type: $(typeof(cb)). " *
-                  "Only DiscreteCallback and ContinuousCallback are supported.")
-        end
+        _wrap_and_collect!(wrapped_callbacks, cb, bf, i)
     end
 
     if length(wrapped_callbacks) == 0
@@ -267,19 +261,49 @@ function _wrap_callback(cb::DiscreteCallback, bf::BatchedFunction, ode_idx::Int)
     return DiscreteCallback(
         _wrap_condition(bf, ode_idx, cb.condition),
         _wrap_affect(bf, ode_idx, cb.affect!);
-        save_positions=cb.save_positions
+        save_positions = cb.save_positions
     )
 end
 
 function _wrap_callback(cb::ContinuousCallback, bf::BatchedFunction, ode_idx::Int)
     wrapped_affect_neg! = isnothing(cb.affect_neg!) ? nothing :
-                          _wrap_affect(bf, ode_idx, cb.affect_neg!)
+        _wrap_affect(bf, ode_idx, cb.affect_neg!)
     return ContinuousCallback(
         _wrap_condition(bf, ode_idx, cb.condition),
         _wrap_affect(bf, ode_idx, cb.affect!),
         wrapped_affect_neg!;
-        save_positions=cb.save_positions
+        save_positions = cb.save_positions
     )
+end
+
+#==============================================================================#
+# Callback Collection Helper
+#==============================================================================#
+
+"""
+    _wrap_and_collect!(wrapped_callbacks, cb, bf::BatchedFunction, ode_idx::Int)
+
+Wrap a callback for the given ODE index and add to the collection.
+Handles DiscreteCallback, ContinuousCallback, and CallbackSet.
+"""
+function _wrap_and_collect!(wrapped_callbacks, cb::DiscreteCallback, bf::BatchedFunction, ode_idx::Int)
+    push!(wrapped_callbacks, _wrap_callback(cb, bf, ode_idx))
+    return nothing
+end
+
+function _wrap_and_collect!(wrapped_callbacks, cb::ContinuousCallback, bf::BatchedFunction, ode_idx::Int)
+    push!(wrapped_callbacks, _wrap_callback(cb, bf, ode_idx))
+    return nothing
+end
+
+function _wrap_and_collect!(wrapped_callbacks, cb::CallbackSet, bf::BatchedFunction, ode_idx::Int)
+    for discrete_cb in cb.discrete_callbacks
+        _wrap_and_collect!(wrapped_callbacks, discrete_cb, bf, ode_idx)
+    end
+    for continuous_cb in cb.continuous_callbacks
+        _wrap_and_collect!(wrapped_callbacks, continuous_cb, bf, ode_idx)
+    end
+    return nothing
 end
 
 #==============================================================================#
@@ -318,4 +342,15 @@ end
 # Default to PerODE for backward compatibility
 function batch_u0s(u0s::Vector{<:AbstractVector})
     return batch_u0s(u0s, PerODE())
+end
+
+"""
+    batch_u0s(u0::AbstractVector{<:Number}, ::MemoryOrdering)
+
+Passthrough for a pre-flattened batch state. The caller is responsible for
+arranging bytes consistent with the chosen `MemoryOrdering` — no reordering
+is performed here.
+"""
+function batch_u0s(u0::AbstractVector{<:Number}, ::MemoryOrdering)
+    return u0
 end
