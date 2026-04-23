@@ -343,3 +343,14 @@ end
 function batch_u0s(u0s::Vector{<:AbstractVector})
     return batch_u0s(u0s, PerODE())
 end
+
+"""
+    batch_u0s(u0::AbstractVector{<:Number}, ::MemoryOrdering)
+
+Passthrough for a pre-flattened batch state. The caller is responsible for
+arranging bytes consistent with the chosen `MemoryOrdering` — no reordering
+is performed here.
+"""
+function batch_u0s(u0::AbstractVector{<:Number}, ::MemoryOrdering)
+    return u0
+end
