@@ -8,7 +8,7 @@
     @variables x(t)
 
     eqs = [D(x) ~ -α * x]
-    @named decay_sys = ODESystem(eqs, t)
+    @named decay_sys = System(eqs, t)
     decay_sys = mtkcompile(decay_sys)
 
     lf = LockstepFunction(decay_sys, 3)
@@ -40,7 +40,7 @@ end
         D(x) ~ v,
         D(v) ~ -ω^2 * x
     ]
-    @named oscillator = ODESystem(eqs, t)
+    @named oscillator = System(eqs, t)
     oscillator = mtkcompile(oscillator)
 
     lf = LockstepFunction(oscillator, 3)
@@ -66,7 +66,7 @@ end
     @variables x(t)
 
     eqs = [D(x) ~ r * x]
-    @named growth = ODESystem(eqs, t)
+    @named growth = System(eqs, t)
     growth = mtkcompile(growth)
 
     lf = LockstepFunction(growth, 3)
@@ -97,7 +97,7 @@ end
     @variables x(t)
 
     eqs = [D(x) ~ r * x]
-    @named growth = ODESystem(eqs, t)
+    @named growth = System(eqs, t)
     growth = mtkcompile(growth)
 
     reset_count = Ref(0)
@@ -135,7 +135,7 @@ end
     @variables x(t)
 
     eqs = [D(x) ~ -α * x + β]
-    @named sys = ODESystem(eqs, t)
+    @named sys = System(eqs, t)
     # Use mtkcompile if available (MTK v10+), otherwise structural_simplify
     simplify_fn = isdefined(ModelingToolkit, :mtkcompile) ? ModelingToolkit.mtkcompile : ModelingToolkit.structural_simplify
     sys_simple = simplify_fn(sys)

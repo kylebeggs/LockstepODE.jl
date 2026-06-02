@@ -55,7 +55,7 @@ end
 end
 
 @testitem "Batched mode solve - exponential decay" begin
-    using LockstepODE, OrdinaryDiffEq
+    using LockstepODE, OrdinaryDiffEq, SciMLBase
 
     function decay!(du, u, p, t)
         du[1] = -p * u[1]
