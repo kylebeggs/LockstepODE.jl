@@ -1,31 +1,35 @@
 name = "LockstepODE"
 uuid = "6148aecd-d198-440c-a04f-51208fe3c037"
-authors = ["Kyle Beggs <beggskw@gmail.com> and contributors"]
 version = "2.0.0"
+authors = ["Kyle Beggs <beggskw@gmail.com> and contributors"]
 
 [deps]
+Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
 CommonSolve = "38540f10-b2f7-11e9-35d8-d573e4eb0ff2"
+KernelAbstractions = "63c18a36-062a-441e-b654-da1e3ab1ce7c"
 OhMyThreads = "67456a42-1dca-4109-a031-0a68de7e3ad5"
-OrdinaryDiffEq = "1dea7af3-3e70-54e6-95c3-0bf5283fa5ed"
 SciMLBase = "0bca4576-84f4-4d90-8ffe-ffa030f20462"
 
 [weakdeps]
-AMDGPU = "21141c5a-9bdb-4563-92ae-f87d6854732e"
-CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
-KernelAbstractions = "63c18a36-062a-441e-b654-da1e3ab1ce7c"
-Metal = "dde4c033-4e86-420c-a63e-0dd931031962"
 ModelingToolkit = "961ee093-0014-501f-94e3-6117800e7a78"
-oneAPI = "8f75cd03-7ff8-4ecb-9b8f-daf728133b1b"
 
 [extensions]
-LockstepODEAMDGPUExt = ["AMDGPU", "KernelAbstractions"]
-LockstepODECUDAExt = ["CUDA", "KernelAbstractions"]
 LockstepODEMTKExt = "ModelingToolkit"
-LockstepODEMetalExt = ["Metal", "KernelAbstractions"]
-LockstepODEoneAPIExt = ["oneAPI", "KernelAbstractions"]
+
+[compat]
+Adapt = "4"
+CommonSolve = "0.2.4"
+JET = "0.8.22, 0.9, 0.10, 0.11, 0.12, 0.13"
+KernelAbstractions = "0.9, 0.10"
+ModelingToolkit = "11.22"
+OhMyThreads = "0.7, 0.8"
+OrdinaryDiffEq = "6.109, 7.0"
+SciMLBase = "2.149, 3.11"
+julia = "1.10"
 
 [extras]
 CommonSolve = "38540f10-b2f7-11e9-35d8-d573e4eb0ff2"
+JET = "c3a54625-cd67-489e-a8e7-0a5a0ff4e31b"
 ModelingToolkit = "961ee093-0014-501f-94e3-6117800e7a78"
 OrdinaryDiffEq = "1dea7af3-3e70-54e6-95c3-0bf5283fa5ed"
 SciMLBase = "0bca4576-84f4-4d90-8ffe-ffa030f20462"
@@ -35,17 +39,4 @@ TestItemRunner = "f8b46487-2199-4994-9208-9a1283c18c0a"
 TestItems = "1c621080-faea-4a02-84b6-bbd5e436b8fe"
 
 [targets]
-test = ["CommonSolve", "ModelingToolkit", "OrdinaryDiffEq", "SciMLBase", "Statistics", "Test", "TestItemRunner", "TestItems"]
-
-[compat]
-AMDGPU = "2"
-CUDA = "6"
-CommonSolve = "0.2.4"
-KernelAbstractions = "0.9, 0.10"
-Metal = "1"
-ModelingToolkit = "11.22"
-OhMyThreads = "0.7, 0.8"
-OrdinaryDiffEq = "6.109, 7.0"
-SciMLBase = "2.149, 3.11"
-julia = "1.10"
-oneAPI = "2"
+test = ["CommonSolve", "JET", "ModelingToolkit", "OrdinaryDiffEq", "SciMLBase", "Statistics", "Test", "TestItemRunner", "TestItems"]

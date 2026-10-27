@@ -5,9 +5,10 @@ Provides init, solve, and solve! methods that integrate with the SciML ecosystem
 Dispatches on mode: LockstepProblem{Ensemble} or LockstepProblem{Batched}.
 """
 
-using OrdinaryDiffEq: ODEProblem, ODESolution, CallbackSet
-using OrdinaryDiffEq: init as ode_init, solve as ode_solve, solve! as ode_solve!
-using SciMLBase: ReturnCode
+# Only SciMLBase here: the `init` methods for an `ODEProblem` come from whichever solver
+# package the user loaded to get `alg`, so LockstepODE never needs OrdinaryDiffEq itself.
+using SciMLBase: ODEProblem, ODESolution, CallbackSet, ReturnCode
+using CommonSolve: init as ode_init, solve as ode_solve, solve! as ode_solve!
 using OhMyThreads: tforeach
 import CommonSolve: solve!, init, solve
 
@@ -165,11 +166,12 @@ function CommonSolve.init(
     lf = prob.lf
     opts = prob.opts
 
-    # Create BatchedFunction for RHS evaluation (stores params internally)
-    bf = BatchedFunction(lf, opts, prob.ps)
-
     # Batch initial conditions with correct ordering
     u0_batched = batch_u0s(prob.u0s, opts.ordering)
+
+    # Create BatchedFunction for RHS evaluation (stores params internally), on the same
+    # device as the state so that GPU initial conditions are all a GPU solve needs
+    bf = _on_backend(KA.get_backend(u0_batched), BatchedFunction(lf, opts, prob.ps))
 
     # Create and wrap callbacks
     cb = create_lockstep_callbacks(bf)

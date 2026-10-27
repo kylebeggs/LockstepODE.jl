@@ -1,7 +1,6 @@
 module LockstepODE
 
 using SciMLBase
-using OrdinaryDiffEq
 using CommonSolve
 
 # Include order matters: types → batched (uses types) → problem (uses BatchedOpts) → ...
