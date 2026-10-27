@@ -26,6 +26,10 @@
     bf3 = BatchedFunction(lf, opts, params)
     @test bf3.ordering isa PerIndex
     @test bf3.internal_threading == false
+
+    # The RHS indexes params[i] for every ODE, so a wrong length must fail up front
+    @test_throws ArgumentError BatchedFunction(lf, [nothing, nothing])
+    @test_throws ArgumentError BatchedFunction(lf, fill(nothing, 4))
 end
 
 @testitem "LockstepProblem{Batched} constructor" begin
@@ -305,4 +309,59 @@ end
         expected = u0s[i][1] * exp(-0.5)
         @test isapprox(sol[i].u[end][1], expected, rtol=1e-4)
     end
+end
+
+@testitem "BatchedFunction RHS: zero-allocation, inferred hot path" begin
+    using LockstepODE, JET
+
+    # The embedding use case: a downstream integrator calls the RHS directly, in PerIndex
+    # layout, with a lazy per-ODE params vector whose getindex builds each ODE's context.
+    struct NodeContexts <: AbstractVector{Tuple{Float64, Float64}}
+        xs::Vector{Float64}
+        scale::Float64
+    end
+    Base.size(c::NodeContexts) = size(c.xs)
+    Base.getindex(c::NodeContexts, i::Int) = (c.xs[i], c.scale)
+
+    struct Relax end
+    function (::Relax)(du, u, p, t)
+        (x, s) = p
+        for j in eachindex(u)
+            du[j] = -s * x * u[j]
+        end
+        return nothing
+    end
+
+    const M = 4
+
+    function setup(N, threading)
+        params = NodeContexts(collect(range(0.5, 1.5; length=N)), 2.0)
+        lf = LockstepFunction(Relax(), M, N)
+        bf = BatchedFunction(lf, params; ordering=PerIndex(), internal_threading=threading)
+        u = collect(range(1.0, 2.0; length=N * M))
+        return (bf, zero(u), u)
+    end
+
+    function min_bytes(bf, du, u)
+        bf(du, u, nothing, 0.0)  # warm up
+        return minimum(_ -> @allocated(bf(du, u, nothing, 0.0)), 1:10)
+    end
+
+    for threading in (false, true)
+        (bf, du, u) = setup(1_000, threading)
+        bf(du, u, nothing, 0.0)
+        # PerIndex: state j of every node is one contiguous block, so node i's
+        # parameter repeats once per block
+        @test du ≈ -2.0 .* repeat(bf.params.xs; outer=M) .* u
+        @test_opt target_modules=(LockstepODE,) bf(du, u, nothing, 0.0)
+    end
+
+    serial = min_bytes(setup(1_000, false)...)
+    @info "Serial RHS allocations (bytes)" serial
+    @test serial == 0
+
+    # Threading costs a fixed set of tasks per call; nothing may scale with N
+    (small, large) = map(N -> min_bytes(setup(N, true)...), (1_000, 100_000))
+    @info "Threaded RHS allocations (bytes)" Threads.nthreads() small large
+    @test large == small
 end
