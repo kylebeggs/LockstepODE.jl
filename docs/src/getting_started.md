@@ -266,7 +266,7 @@ prob = LockstepProblem{Batched}(lf, u0s, tspan; ordering=PerIndex())
 Use Batched mode with GPU arrays:
 
 ```julia
-using LockstepODE
+using LockstepODE, OrdinaryDiffEq
 using CUDA  # Or: AMDGPU, Metal, oneAPI
 
 # Create GPU initial conditions
@@ -276,6 +276,8 @@ u0s_gpu = [CuArray([1.0, 0.0]) for _ in 1:1000]
 prob = LockstepProblem{Batched}(lf, u0s_gpu, tspan, p)
 sol = solve(prob, Tsit5())  # Runs on GPU
 ```
+
+The parameters are moved to the device of `u0s` automatically, so each per-ODE parameter must be an isbits value (a number, tuple, or `SVector`), not a `Vector`.
 
 ### Supported Backends
 
@@ -288,10 +290,27 @@ sol = solve(prob, Tsit5())  # Runs on GPU
 
 ### GPU Notes
 
-- GPU backends are optional extensions - only install what you need
+- No extension to load: any array whose `KernelAbstractions.get_backend` is a GPU backend runs on that GPU
 - Backend selection is automatic based on array type
 - GPU acceleration is most beneficial for large N (100+ ODEs)
 - All backends use the same code - just change the array type
+
+## Using `BatchedFunction` in your own integrator
+
+If another time-stepper already owns the solve (an operator split, a hand-written scheme), skip `LockstepProblem` and use the right-hand side directly. `BatchedFunction` is a plain `(du, u, p, t)` callable that evaluates all N ODEs at once, and LockstepODE itself does not depend on OrdinaryDiffEq — load whichever solver package you need.
+
+```julia
+using LockstepODE
+
+lf = LockstepFunction(cell_rhs!, M, N)            # ode_size M, num_odes N
+bf = BatchedFunction(lf, params; ordering=PerIndex())
+bf(du, u, nothing, t)                              # `p` is ignored; ODE i gets params[i]
+```
+
+- `params` can be any `AbstractVector` of length N, including a lazy one whose `getindex(i)` builds ODE i's context on the fly.
+- `PerIndex()` stores each state variable contiguously across ODEs (`u = [x₁(1:N); x₂(1:N); …]`), which is also the coalesced layout on a GPU.
+- On the CPU without threading, a call allocates nothing; with `internal_threading=true` it allocates a fixed few KB of task overhead per call, independent of N.
+- For a GPU, move the function to the device first: `bf_gpu = Adapt.adapt(CuArray, bf)` moves `params` and anything captured in the ODE function.
 
 ## Solution Access
 
