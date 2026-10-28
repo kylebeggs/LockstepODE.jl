@@ -161,24 +161,6 @@ function LockstepFunction(
     return LockstepFunction{F, C}(f, Int(num_odes), Int(ode_size), callbacks)
 end
 
-#==============================================================================#
-# Parameter Extraction
-#==============================================================================#
-
-"""
-    _get_ode_parameters(p, i::Int, num_odes::Int)
-
-Extract parameters for the i-th ODE from batched parameters.
-
-If `p` is a vector with length == num_odes, returns `p[i]`.
-Otherwise returns `p` unchanged (shared parameter or nothing).
-"""
-@inline function _get_ode_parameters(p::AbstractVector, i::Int, num_odes::Int)
-    return length(p) == num_odes ? p[i] : p
-end
-
-@inline _get_ode_parameters(p, ::Int, ::Int) = p
-
 """
     LockstepSolution{S}
 

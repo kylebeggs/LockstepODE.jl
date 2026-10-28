@@ -4,8 +4,9 @@ Batched mode components for LockstepODE.
 Provides BatchedFunction wrapper, SubIntegrator for callbacks, and parallel RHS evaluation.
 """
 
-using OhMyThreads: tforeach
-using OrdinaryDiffEq: DiscreteCallback, ContinuousCallback, CallbackSet
+using SciMLBase: DiscreteCallback, ContinuousCallback, CallbackSet
+import Adapt
+import KernelAbstractions as KA
 
 #==============================================================================#
 # BatchedFunction - Callable wrapper for batched ODE solving
@@ -23,7 +24,8 @@ and provides the callable interface `(du, u, p, t)` for OrdinaryDiffEq.jl.
 - `lf::LockstepFunction{F,C}`: The underlying LockstepFunction
 - `ordering::O`: Memory layout (PerODE or PerIndex)
 - `internal_threading::Bool`: Enable CPU threading for RHS evaluation
-- `params::P`: Per-ODE parameters (stored here to bypass SciMLBase introspection)
+- `params::P`: Per-ODE parameters, indexed as `params[i]` (stored here to bypass SciMLBase
+  introspection). Any `AbstractVector` of length `num_odes` works, including a lazy one.
 
 # Example
 ```julia
@@ -41,6 +43,20 @@ struct BatchedFunction{O <: MemoryOrdering, F, C, P}
     ordering::O
     internal_threading::Bool
     params::P
+
+    function BatchedFunction{O, F, C, P}(
+            lf::LockstepFunction{F, C},
+            ordering::O,
+            internal_threading::Bool,
+            params::P
+        ) where {O <: MemoryOrdering, F, C, P}
+        # `ode_kernel!` indexes `params[i]` unconditionally, so a wrong length must fail
+        # here rather than as an out-of-bounds read (or silent reuse) mid-solve.
+        length(params) == lf.num_odes || throw(ArgumentError(
+            "Expected $(lf.num_odes) per-ODE parameters, got $(length(params))"
+        ))
+        return new{O, F, C, P}(lf, ordering, internal_threading, params)
+    end
 end
 
 function BatchedFunction(
@@ -92,8 +108,6 @@ end
 # Callback Extraction
 #==============================================================================#
 
-# Note: _get_ode_parameters is defined in types.jl
-
 """
     _get_ode_callback(callbacks, i::Int, num_odes::Int)
 
@@ -115,11 +129,10 @@ end
 
 Evaluate the i-th ODE's RHS within the batched system.
 
-This is the core kernel called for each ODE in the batch.
-Marked `@inline` for use in GPU extensions via KernelAbstractions.jl.
+This is the core kernel called for each ODE in the batch, by both the CPU loop and the
+KernelAbstractions GPU kernel. Marked `@inline` so it inlines into that kernel.
 
 Note: The `p` argument is unused - parameters are stored in `bf.params`.
-This signature is maintained for API compatibility with GPU extensions.
 """
 @inline function ode_kernel!(i::Int, bf::BatchedFunction, du, u, p, t)
     idxs = _get_idxs(bf, i)
@@ -139,18 +152,82 @@ end
 
 Evaluate all ODEs in the batch.
 
-Uses OhMyThreads.tforeach for parallel CPU execution when `internal_threading=true`.
-For GPU arrays, dispatch is handled by extensions (CUDA, AMDGPU, Metal, oneAPI).
+Dispatches on `KernelAbstractions.get_backend(u)`: on the CPU the ODEs run in a loop
+(threaded with `Threads.@threads` when `internal_threading=true`); on any other
+KernelAbstractions backend (CUDA, AMDGPU, Metal, oneAPI, …) they run as one GPU thread
+per ODE. For the GPU path, move the function to the device first with
+`Adapt.adapt(ArrayType, bf)` so that `params` (and anything captured in `f`) lives there too.
+
+The `p` argument is ignored; per-ODE parameters come from `bf.params`.
 """
 function (bf::BatchedFunction)(du, u, p, t)
+    _batched_rhs!(du, u, bf, t, KA.get_backend(u))
+    return nothing
+end
+
+# Threaded calls allocate a fixed ~nthreads() tasks per call (≈9 KB on 24 threads),
+# independent of N; the serial path allocates nothing. `Threads.@threads` is used rather
+# than `tforeach` because it has the smaller floor and no runtime dispatch in its chunking.
+function _batched_rhs!(du, u, bf::BatchedFunction, t, ::KA.CPU)
     N = bf.lf.num_odes
     if bf.internal_threading
-        tforeach(i -> ode_kernel!(i, bf, du, u, p, t), 1:N)
+        Threads.@threads for i in 1:N
+            ode_kernel!(i, bf, du, u, nothing, t)
+        end
     else
-        foreach(i -> ode_kernel!(i, bf, du, u, p, t), 1:N)
+        foreach(i -> ode_kernel!(i, bf, du, u, nothing, t), 1:N)
     end
     return nothing
 end
+
+# Any non-CPU backend. Launching a `Kernel{<:GPU}` and synchronizing it are *dynamic* calls
+# by construction: the methods that implement them are defined by the backend package
+# (CUDA.jl, AMDGPU.jl, …) and do not exist until one is loaded. Going through
+# `invokelatest` says so explicitly, and keeps static analysis (JET) from reporting a
+# missing method on a machine where no GPU package is present. The extra dispatch is a few
+# tens of nanoseconds against a kernel launch measured in microseconds.
+function _batched_rhs!(du, u, bf::BatchedFunction, t, backend)
+    kernel = _lockstep_kernel!(backend)
+    Base.invokelatest(kernel, _kernel_function(bf), du, u, t; ndrange = bf.lf.num_odes)
+    Base.invokelatest(KA.synchronize, backend)
+    return nothing
+end
+
+KA.@kernel function _lockstep_kernel!(bf, du, u, t)
+    i = KA.@index(Global, Linear)
+    ode_kernel!(i, bf, du, u, nothing, t)
+end
+
+# Callbacks are consumed by the host-side integrator, never by the kernel, and are rarely
+# isbits; drop them so they don't block conversion of the kernel argument.
+function _kernel_function(bf::BatchedFunction)
+    lf = LockstepFunction(bf.lf.f, bf.lf.ode_size, bf.lf.num_odes)
+    return BatchedFunction(lf, bf.params; bf.ordering, bf.internal_threading)
+end
+
+#==============================================================================#
+# Adapt - move a BatchedFunction between host and device
+#==============================================================================#
+
+# Callbacks stay as they are: they run on the host, in the integrator.
+function Adapt.adapt_structure(to, lf::LockstepFunction)
+    return LockstepFunction(Adapt.adapt(to, lf.f), lf.ode_size, lf.num_odes; lf.callbacks)
+end
+
+function Adapt.adapt_structure(to, bf::BatchedFunction)
+    return BatchedFunction(
+        Adapt.adapt(to, bf.lf),
+        Adapt.adapt(to, bf.params);
+        bf.ordering,
+        bf.internal_threading,
+    )
+end
+
+# A KernelAbstractions backend is a valid Adapt target on the GPU side (each GPU package
+# maps its backend to its array type). On the CPU, leave `bf` alone rather than let Adapt
+# materialize a lazy or range-valued `params` into an `Array`.
+_on_backend(::KA.CPU, bf::BatchedFunction) = bf
+_on_backend(backend, bf::BatchedFunction) = Adapt.adapt(backend, bf)
 
 #==============================================================================#
 # SubIntegrator - Per-ODE view for callbacks

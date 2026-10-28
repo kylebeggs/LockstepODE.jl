@@ -11,7 +11,7 @@ LockstepODE.jl is a Julia package for solving N independent ODEs in parallel wit
 - **Two execution modes**: Ensemble (N independent integrators) or Batched (single integrator with parallel RHS)
 - **CommonSolve.jl interface**: `init`, `solve`, `solve!`, `step!`, `reinit!`
 - **CPU threading**: Automatic parallelization via `OhMyThreads.jl`
-- **Multi-GPU support**: CUDA, AMDGPU, Metal, oneAPI via optional extensions
+- **Multi-GPU support**: any KernelAbstractions.jl backend (CUDA, AMDGPU, Metal, oneAPI)
 - **Per-ODE callbacks**: Different `DiscreteCallback` or `ContinuousCallback` per ODE
 - **Flexible memory layouts**: `PerODE` (default) or `PerIndex` for Batched mode
 - **ModelingToolkit integration**: Direct support for MTK systems
